@@ -24,32 +24,22 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 ## 4. Arsitektur
 
 ```
-┌──────────────────────────────────────────────────┐
-│                   Next.js (App Router)            │
-│  ┌─────────────┐  ┌─────────────┐               │
-│  │  Dashboard   │  │  API Routes  │               │
-│  │  (React)     │  │  (Backend)   │               │
-│  └──────┬──────┘  └──────┬──────┘               │
-│         │                │                        │
-│         └────────┬───────┘                        │
-│                  │                                │
-│          ┌───────▼───────┐                        │
-│          │  PostgreSQL    │                        │
-│          │  (Neon/PSQL)   │                        │
-│          └───────┬───────┘                        │
-│                  │                                │
-│          ┌───────▼───────┐                        │
-│          │ Evolution API  │                        │
-│          │   (Docker)     │                        │
-│          │ QR Code Scan   │                        │
-│          │ Webhooks       │                        │
-│          └───────┬───────┘                        │
-│                  │                                │
-│          ┌───────▼───────┐                        │
-│          │   Midtrans     │                        │
-│          │  (Payment)     │                        │
-│          └───────────────┘                        │
-└──────────────────────────────────────────────────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────┐
+│   Frontend   │────▶│  PostgreSQL  │◀────│  Midtrans│
+│  (EJS/React) │     │              │     │(Payment) │
+└──────┬───────┘     └──────┬───────┘     └──────────┘
+       │                    │
+       │            ┌───────▼───────┐
+       │            │   Express.js  │
+       └────────────│  Backend API  │
+                    └───────┬───────┘
+                            │
+                    ┌───────▼───────┐
+                    │ Evolution API  │
+                    │   (Docker)     │
+                    │ QR Code Scan   │
+                    │ Webhooks       │
+                    └───────────────┘
 ```
 
 ## 5. Fitur
@@ -104,14 +94,14 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 
 | Layer | Teknologi | Biaya |
 |-------|-----------|-------|
-| Frontend | Next.js (App Router) | Gratis (Vercel) |
-| Backend | Next.js API Routes | Gratis (Vercel) |
-| Database | PostgreSQL (Neon/Railway) | Gratis (500MB) |
-| Auth | NextAuth.js / JWT | Gratis |
-| WA API | **Evolution API** (Docker) | Gratis (open source) |
+| Frontend | EJS / React | Gratis |
+| Backend | Express.js | Gratis |
+| Database | PostgreSQL | Gratis (Neon) / VPS |
+| Auth | JWT | Gratis |
+| WA API | Evolution API (Docker) | Gratis (open source) |
 | QR Code | Evolution API `/instance/connect` | Native REST API |
 | Payment | Midtrans | Fee per transaksi 1-2% |
-| Hosting | Vercel + VPS (Evolution) | VPS ~Rp150k/bln |
+| Hosting | VPS (Railway/DO) | ~Rp150k/bln |
 
 ## 7. Alur Koneksi WhatsApp (QR Evolution API)
 
@@ -140,61 +130,41 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 
 ```
 kospintar/
-├── prisma/
-│   └── schema.prisma              # Database model
 ├── src/
-│   ├── app/
-│   │   ├── layout.js               # Root layout
-│   │   ├── page.js                 # Landing page
-│   │   ├── login/page.js           # Login
-│   │   ├── register/page.js        # Register
-│   │   ├── dashboard/
-│   │   │   ├── page.js             # Dashboard utama
-│   │   │   ├── properties/         # Manajemen properti
-│   │   │   │   ├── page.js
-│   │   │   │   ├── new/page.js
-│   │   │   │   └── [id]/page.js
-│   │   │   ├── tenants/            # Manajemen penghuni
-│   │   │   │   └── page.js
-│   │   │   ├── bills/              # Tagihan & pembayaran
-│   │   │   │   └── page.js
-│   │   │   ├── tickets/            # Komplain / tiket
-│   │   │   │   └── page.js
-│   │   │   └── wa/                 # Koneksi WhatsApp QR
-│   │   │       └── page.js
-│   │   └── api/                    # Backend API routes
-│   │       ├── auth/
-│   │       │   ├── register/route.js
-│   │       │   └── login/route.js
-│   │       ├── properties/
-│   │       │   ├── route.js
-│   │       │   └── [id]/route.js
-│   │       ├── tenants/route.js
-│   │       ├── bills/route.js
-│   │       ├── tickets/route.js
-│   │       └── wa/
-│   │           ├── connect/route.js
-│   │           ├── qr/[propertyId]/route.js
-│   │           ├── status/[propertyId]/route.js
-│   │           ├── send/route.js
-│   │           └── webhook/[instanceName]/route.js
-│   ├── lib/
-│   │   ├── prisma.js               # Prisma client
-│   │   ├── auth.js                 # JWT helpers
-│   │   ├── evolution.js            # Evolution API client
-│   │   └── midtrans.js             # Midtrans client
-│   └── components/
-│       ├── Sidebar.js              # Navigasi sidebar
-│       ├── Header.js               # Top bar
-│       └── QRModal.js              # Modal scan QR
-├── .env.local
+│   ├── index.js                    # Entry point Express
+│   ├── config/
+│   │   └── db.js                   # Koneksi PostgreSQL
+│   ├── middleware/
+│   │   └── auth.js                 # JWT middleware
+│   ├── routes/
+│   │   ├── auth.js                 # Register / Login
+│   │   ├── properties.js           # CRUD properti
+│   │   ├── tenants.js              # CRUD penghuni
+│   │   ├── bills.js                # Tagihan + Midtrans
+│   │   ├── tickets.js              # Tiket komplain
+│   │   └── wa.js                   # QR, send, webhook Evolution
+│   ├── services/
+│   │   ├── evolution.js            # Client Evolution API
+│   │   └── midtrans.js             # Client Midtrans
+│   └── schema.sql                  # Database schema
+├── views/                          # EJS templates
+│   ├── layout.ejs
+│   ├── login.ejs
+│   ├── dashboard.ejs
+│   ├── properties.ejs
+│   ├── tenants.ejs
+│   ├── bills.ejs
+│   ├── tickets.ejs
+│   └── wa.ejs
+├── public/                         # Static files
+├── .env
 ├── package.json
-└── next.config.js
+└── README.md
 ```
 
 ## 11. Next Steps
 
-1. Init project Next.js + App Router
+1. Init Express.js project
 2. Setup PostgreSQL + schema
 3. Build auth (register/login)
 4. CRUD properti + penghuni

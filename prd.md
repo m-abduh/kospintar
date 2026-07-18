@@ -136,7 +136,63 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 - Response komplain <1 jam
 - 50+ owner kos onboard bulan pertama
 
-## 10. Next Steps
+## 10. Struktur Project
+
+```
+kospintar/
+├── prisma/
+│   └── schema.prisma              # Database model
+├── src/
+│   ├── app/
+│   │   ├── layout.js               # Root layout
+│   │   ├── page.js                 # Landing page
+│   │   ├── login/page.js           # Login
+│   │   ├── register/page.js        # Register
+│   │   ├── dashboard/
+│   │   │   ├── page.js             # Dashboard utama
+│   │   │   ├── properties/         # Manajemen properti
+│   │   │   │   ├── page.js
+│   │   │   │   ├── new/page.js
+│   │   │   │   └── [id]/page.js
+│   │   │   ├── tenants/            # Manajemen penghuni
+│   │   │   │   └── page.js
+│   │   │   ├── bills/              # Tagihan & pembayaran
+│   │   │   │   └── page.js
+│   │   │   ├── tickets/            # Komplain / tiket
+│   │   │   │   └── page.js
+│   │   │   └── wa/                 # Koneksi WhatsApp QR
+│   │   │       └── page.js
+│   │   └── api/                    # Backend API routes
+│   │       ├── auth/
+│   │       │   ├── register/route.js
+│   │       │   └── login/route.js
+│   │       ├── properties/
+│   │       │   ├── route.js
+│   │       │   └── [id]/route.js
+│   │       ├── tenants/route.js
+│   │       ├── bills/route.js
+│   │       ├── tickets/route.js
+│   │       └── wa/
+│   │           ├── connect/route.js
+│   │           ├── qr/[propertyId]/route.js
+│   │           ├── status/[propertyId]/route.js
+│   │           ├── send/route.js
+│   │           └── webhook/[instanceName]/route.js
+│   ├── lib/
+│   │   ├── prisma.js               # Prisma client
+│   │   ├── auth.js                 # JWT helpers
+│   │   ├── evolution.js            # Evolution API client
+│   │   └── midtrans.js             # Midtrans client
+│   └── components/
+│       ├── Sidebar.js              # Navigasi sidebar
+│       ├── Header.js               # Top bar
+│       └── QRModal.js              # Modal scan QR
+├── .env.local
+├── package.json
+└── next.config.js
+```
+
+## 11. Next Steps
 
 1. Init project Next.js + App Router
 2. Setup PostgreSQL + schema

@@ -7,69 +7,68 @@ SaaS manajemen kos terintegrasi WhatsApp. Satu dashboard untuk tagihan, komplain
 ## Arsitektur
 
 ```
-Next.js (pages + API)
-  ├── PostgreSQL
-  ├── Evolution API (WA QR)
-  └── Midtrans (payment)
+Next.js ──▶ Express API ──▶ PostgreSQL
+                │
+          Evolution API (WA QR)
+                │
+            Midtrans (payment)
 ```
 
 ## Tech Stack
 
-- **Next.js** — frontend + API routes
-- **PostgreSQL** — database
-- **Evolution API** — WhatsApp multi-instance + QR
-- **Midtrans** — pembayaran
-- **Vercel** — hosting Next.js
-- **VPS** — hosting Evolution API
+| Layer | Teknologi |
+|-------|-----------|
+| Frontend | Next.js |
+| Backend | Express.js |
+| Database | PostgreSQL |
+| WA | Evolution API (Docker) |
+| Payment | Midtrans |
 
 ## Struktur
 
 ```
 kospintar/
-├── prisma/schema.prisma       # DB model
-├── src/
-│   ├── app/
-│   │   ├── page.js            # Landing
-│   │   ├── login/page.js
-│   │   ├── register/page.js
-│   │   └── dashboard/
-│   │       ├── page.js
-│   │       ├── properties/
-│   │       ├── tenants/
-│   │       ├── bills/
-│   │       ├── tickets/
-│   │       └── wa/
-│   └── api/
-│       ├── auth/route.js
-│       ├── properties/route.js
-│       ├── tenants/route.js
-│       ├── bills/route.js
-│       ├── tickets/route.js
-│       └── wa/
-│           ├── connect/route.js
-│           ├── qr/route.js
-│           ├── webhook/route.js
-│           └── send/route.js
-├── lib/
-│   ├── prisma.js
-│   ├── auth.js
-│   ├── evolution.js
-│   └── midtrans.js
-└── components/
-    ├── Sidebar.js
-    └── QRModal.js
+├── backend/
+│   ├── src/
+│   │   ├── index.js
+│   │   ├── routes/
+│   │   │   ├── auth.js
+│   │   │   ├── properties.js
+│   │   │   ├── tenants.js
+│   │   │   ├── bills.js
+│   │   │   ├── tickets.js
+│   │   │   └── wa.js
+│   │   ├── services/
+│   │   │   ├── evolution.js
+│   │   │   └── midtrans.js
+│   │   └── schema.sql
+│   ├── .env
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.js
+│   │   │   ├── login/page.js
+│   │   │   └── dashboard/
+│   │   │       ├── page.js
+│   │   │       ├── properties/
+│   │   │       ├── tenants/
+│   │   │       ├── bills/
+│   │   │       ├── tickets/
+│   │   │       └── wa/
+│   │   ├── components/
+│   │   └── lib/api.js
+│   ├── .env.local
+│   └── package.json
+└── docker-compose.yml
 ```
 
-## Fitur MVP
+## Fitur
 
 1. Register/login owner
 2. CRUD properti + penghuni
-3. Tagihan + reminder WA
-4. Komplain → tiket otomatis via WA
-5. Koneksi WA via QR code (Evolution API)
+3. Tagihan + reminder WA otomatis
+4. Komplain WA → tiket otomatis
+5. Koneksi WA via QR (Evolution API)
 6. Pembayaran Midtrans
-7. Dashboard rekap
-
-## Alur WA
-
-Owner klik "Hubungkan WA" → QR muncul di dashboard → scan dari HP → selesai. Semua pesan masuk otomatis jadi tiket.
+7. Dashboard rekap keuangan

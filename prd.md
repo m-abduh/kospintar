@@ -407,7 +407,7 @@ Setiap notifikasi WA tercatat di `notification_logs`:
 | **Security** | JWT secret min 32 char, rotasi 6 bulan. Password bcrypt cost 10. HTTPS redirect. CORS restrict ke frontend domain + development domain. CSP headers. Helmet middleware. |
 | **Data** | Backup DB harian (pg_dump) jam 03:00 WIB, retensi 14 hari. Backup ke S3-compatible storage. |
 | **Logging** | Winston/Pino structured logging (JSON format). Correlation ID di tiap request (middleware `express-request-id`). Log level: debug (dev), info (prod). |
-| **Monitoring** | Sentry error tracking + health check endpoint monitor (better-uptime / uptimerobot). Cron job failure → email alert via SMTP. |
+| **Monitoring** | Health dashboard internal (status tiap service). Sentry error tracking. better-uptime / uptimerobot untuk endpoint. Cron job failure → email alert via SMTP. |
 | **Scalability** | 50 properti per server (MVP cukup single instance). PostgreSQL + PgBouncer connection pooling dari awal. Query siap pakai index. |
 | **Mobile** | Web responsive (mobile-first). Breakpoints: 640/768/1024/1280. Target: persona Rina — layar HP 6 inch. |
 | **Audit** | Semua perubahan data critical (tenant, bill, property) tercatat di `audit_logs`. Retention: 1 tahun. |
@@ -419,45 +419,72 @@ Setiap notifikasi WA tercatat di `notification_logs`:
 
 ## 8. Arsitektur
 
+### 8.1 Diagram
+
 ```
-                          ┌─────────────────┐
-                          │    Browser       │
-                          │ (Next.js + PWA)  │
-                          └──────┬──────────┘
-                                 │ HTTPS / CDN
-                          ┌──────▼──────────┐
-                          │   Nginx/Caddy   │
-                          │ (reverse proxy) │
-                          │ (SSL terminator)│
-                          └──────┬──────────┘
-                                 │
-                     ┌───────────▼────────────┐
-                     │   Express API (:3001)   │
-                     │   TypeScript + Zod      │
-                     └──┬──────────────┬───────┘
-                        │              │
-               ┌────────▼─────┐  ┌──────▼─────────┐
-               │  PostgreSQL   │  │   Redis         │
-               │  (:5432)      │  │   (queue+      │
-               │  + PgBouncer  │  │    cache)      │
-               └──────────────┘  └────────────────┘
-                        │
-          ┌─────────────┼──────────────┐
-          │             │              │
-   ┌──────▼──────┐ ┌────▼──────┐ ┌─────▼────────┐
-   │  Evolution   │ │ Midtrans  │ │   SMTP/      │
-   │  API (WA)    │ │  API      │ │   Resend     │
-   │  :8080       │ │           │ │   (email)    │
-   └──────────────┘ └───────────┘ └──────────────┘
+Proxmox Host
+  └── LXC Ubuntu (unprivileged, nesting enabled)
+       └── Docker Compose
+
+            ┌──────────┐
+            │  Caddy   │ ← reverse proxy + SSL (Let's Encrypt)
+            └────┬─────┘
+                 │
+          ┌──────▼──────┐
+          │   API (:80)  │ ← Express.js, TypeScript, Zod
+          │  (REST)      │
+          └──────┬───────┘
+                 │
+     ┌───────────┼──────────────┐
+     │           │              │
+┌────▼────┐ ┌────▼────┐  ┌─────▼──────┐
+│  Worker │ │Scheduler│  │  Redis     │
+│ (queue) │ │ (cron)  │  │ (Bull+     │
+│ async   │ │ billing │  │  cache)    │
+│ WA send │ │ reminder│  └────────────┘
+└─────────┘ └─────────┘
+     │           │              │
+     └───────────┼──────────────┘
+                 │
+          ┌──────▼──────┐
+          │ PostgreSQL   │
+          │ + PgBouncer  │
+          └─────────────┘
+
+External:
+  Evolution API (WA)  →  localhost:8080
+  Midtrans API        →  outbound HTTPS
+  SMTP/Resend         →  outbound
 ```
 
-### Catatan Arsitektur
-- **Redis**: **WAJIB** untuk queue WA. Bull queue: rate limit 50/menit, retry, DLQ. Juga untuk cron lock (advisory).
-- **PgBouncer**: pasang dari awal — transaction pooling. PostgreSQL default max_connections=100.
-- **Nginx/Caddy**: reverse proxy + SSL termination (Let's Encrypt). Cache static assets, gzip.
-- **CDN**: Cloudflare atau serupa untuk static assets (Next.js ISR).
-- **Monolith**: backend satu service dulu. Modular folder structure (routes/services/repositories) biar gampang dipisah nanti.
-- **Health check**: `GET /api/health` (termasuk cek DB + Redis + Evolution reachability), `GET /api/ready` (cek migration up-to-date).
+### 8.2 Service Breakdown
+
+| Container | Role | Dependency |
+|-----------|------|------------|
+| **caddy** | Reverse proxy, SSL termination, static cache | — |
+| **api** | Express.js — serving HTTP requests (REST) | postgres, redis |
+| **worker** | Bull queue consumer — kirim WA, process webhook | redis, postgres |
+| **scheduler** | node-cron — auto-billing, WA reminder, expire payment | postgres, redis |
+| **postgres** | Database utama + PgBouncer sidecar | — |
+| **redis** | Queue (Bull) + cache + cron lock | — |
+| **evolution** | WhatsApp API (Chromium) | — |
+
+### 8.3 Kenapa Worker dan Scheduler Dipisah?
+
+| Proses | Tugas | Kenapa Terpisah |
+|--------|-------|-----------------|
+| **API** | Menangani request HTTP (CRUD, auth, payment) | Harus responsif <500ms. WA send blocking akan memperlambat. |
+| **Worker** | Konsumsi queue: kirim WA, hitung billing, process webhook | Jalan di background, bisa antri + rate limit + retry. Scaling independen. |
+| **Scheduler** | Cron: trigger billing tgl 25, reminder H-7/H-3/H-1, expire payment | Dedicated process, gak rebutan resource dengan API. Cron lock via Redis. |
+
+### 8.4 Catatan Arsitektur
+
+- **Redis**: **WAJIB**. Bull queue untuk WA sending. Rate limit 50/menit sesuai limit Evolution. Cron lock via Redis (advisory lock).
+- **PgBouncer**: Transaction pooling dari awal. Mencegah PostgreSQL max_connections habis.
+- **Caddy**: Reverse proxy + SSL auto (Let's Encrypt). Lebih sederhana dari Nginx.
+- **Static assets**: Caddy cache. Next.js SSG/ISR. CDN opsional (Cloudflare).
+- **Health check**: Tiap service punya endpoint health. Caddy routing: `GET /health` → aggregator.
+- **Shared types**: Monorepo `shared/` package untuk tipe TypeScript + validasi Zod. Dipake bareng API + Worker + Scheduler.
 
 ---
 
@@ -879,6 +906,8 @@ CREATE INDEX idx_chat_tenant ON chat_messages(tenant_id, created_at DESC);
 
 ## 15. Risk & Mitigation
 
+### 15.1 Product Risks
+
 | Risiko | Dampak | Mitigasi |
 |--------|--------|----------|
 | Evolution API tidak stabil | WA gagal kirim | Queue + retry + DLQ. Dashboard tetap berfungsi tanpa WA. Cari provider alternatif (WATI, Fonnte) untuk contingency. |
@@ -888,21 +917,64 @@ CREATE INDEX idx_chat_tenant ON chat_messages(tenant_id, created_at DESC);
 | Regulasi PDP (UU No. 27/2022) | Denda / sanksi | Data minim. Enkripsi at rest. Fitur hapus akun + anonimisasi data. Retention limit. |
 | Kompetitor copy fitur | Kehilangan keunggulan | Fokus ke distribution (owner kos WA groups, marketplace properti) + UX simpel. Bikin habit loop: "buka Kospintar = cek pemasukan". |
 | Cron billing gagal | Tagihan tidak terbit | Alert via email + dashboard. Retry 3x. Manual trigger button. |
-| DB corrupted | Semua data hilang | Backup harian ke S3. Restore drill tiap bulan. RTO: <4 jam. RPO: <24 jam. |
+| DB corrupted | Semua data hilang | Backup harian + mingguan + pre-migration. Restore drill tiap bulan. RTO: <4 jam. RPO: <24 jam. |
+
+### 15.2 Infrastructure Risks (LXC + Single VPS)
+
+| Risiko | Dampak | Mitigasi |
+|--------|--------|----------|
+| Disk penuh — log postgres & Docker image menumpuk | Service crash, DB stop | Cron `docker system prune -f` mingguan. logrotate untuk log container. Alert disk >80%. |
+| RAM tidak cukup — Evolution API spike | OOM killed, WA down | Set `memory: 2g` limit di docker-compose untuk evolution. Jangan restart bareng semua service. |
+| Host Proxmox down (listrik/matri) | Semua service down | Backup PostgreSQL tiap 6 jam + dump ke secondary storage. RPO = 6 jam. Recovery: startup ulang. |
+| LXC unprivileged — Docker tidak jalan | Gagal deploy | Aktifkan `nesting` + `keyctl` di config LXC. Test Docker-in-LXC sebelum production. |
+| Chromium crash karena /dev/shm kecil | Evolution crash | `/dev/shm` minimal 256MB di LXC. Atau pake flag `--disable-dev-shm-usage` di Evolution. |
 
 ---
 
 ## 16. Monitoring & Alerting
 
+### 16.1 Internal Health Dashboard
+
+Setiap komponen punya endpoint health yang dicek tiap 30 detik oleh scheduler. Hasilnya ditampilkan di halaman `/system/health` (hanya untuk owner — akses via env flag).
+
+```
+Status Dashboard:
+  ✓ Database            — connected    (2ms)
+  ✓ Redis               — connected    (1ms)
+  ✓ WA Connected        — 1 instance aktif
+  ✓ Queue               — idle (0 jobs)
+  ✓ Scheduler           — running (next: auto_billing in 2d)
+  ✓ Disk                — 42% used  (14GB / 32GB)
+  ✓ RAM                 — 61% used  (2.4GB / 4GB)
+  ✓ SSL                 — valid, expires in 60d
+```
+
+### 16.2 Health Endpoints
+
+| Endpoint | Service | Cek |
+|----------|---------|-----|
+| `GET /health` | API | Server hidup, return 200 |
+| `GET /health/db` | API | PostgreSQL reachable (`SELECT 1`) + PgBouncer |
+| `GET /health/redis` | API | Redis reachable (`PING`) |
+| `GET /health/evolution` | API | Evolution API reachable + status connection |
+| `GET /health/queue` | API | Bull queue status (pending jobs, failed jobs) |
+| `GET /health/scheduler` | API | Last run timestamp + next run |
+| `GET /health/disk` | API | Disk usage % (threshold alert >80%) |
+| `GET /health/memory` | API | RAM usage % (threshold alert >85%) |
+
+### 16.3 Alerting Matrix
+
 | Komponen | Tools | Alert |
 |----------|-------|-------|
-| Error tracking | Sentry | Error rate >1% → email + dashboard notif |
-| Health check | better-uptime / cron-job | Downtime >1 menit → WA admin |
-| Cron job failure | Custom (cron_logs) | Gagal 3x berturut → email owner + admin |
-| DB backup | pg_dump + S3 backup script | Gagal backup → email admin |
-| WA connection | Cron cek tiap 5 menit | Disconnected >10 menit → dashboard badge |
-| Performance | Sentry performance | API p95 >1 detik → review |
-| SSL renewal | certbot / acme.sh auto-renew | Gagal renew → email admin H-7 |
+| Error rate >1% | Sentry | Email admin + dashboard notif |
+| Downtime >1 menit | better-uptime (probe dari luar) | WA admin + email |
+| DB connection lost | Health check cron | Email admin |
+| Cron job 3x gagal berturut | `cron_logs` | Email owner + admin |
+| Backup gagal | pg_dump script | Email admin |
+| WA disconnected >10 menit | Scheduler check tiap 5 menit | Dashboard badge (mode non-intrusif) |
+| Disk >80% | Health check cron | Email admin |
+| API p95 >1 detik | Sentry performance | Review mingguan |
+| SSL expiry <14 hari | Caddy auto-renew (gagal) | Email admin |
 
 ---
 
@@ -929,13 +1001,116 @@ CREATE INDEX idx_chat_tenant ON chat_messages(tenant_id, created_at DESC);
 
 ---
 
-## 18. Referensi & Lampiran
+## 18. Infrastruktur & Deployment
 
-- **Design System**: [Figma — (coming soon)]
-- **API Contract**: [Postman collection — (coming soon)]
-- **Evolution API Docs**: https://docs.evolution-api.com
-- **Midtrans Docs**: https://docs.midtrans.com
-- **Database Migration**: Wajib pilih salah satu: Prisma atau node-pg-migrate. Keputusan sebelum Sprint 1.
-- **Deployment**: Docker compose di single VPS (DigitalOcean / Railway). Nginx reverse proxy. SSL via Let's Encrypt.
-- **CI/CD**: GitHub Actions — lint → typecheck → test → build Docker → deploy via SSH/docker-compose pull.
-- **TypeScript**: Wajib di frontend & backend. Strict mode.
+### 18.1 Topologi
+
+```
+Proxmox Host
+  └── LXC Container (Ubuntu 24.04 LTS)
+       ├── unprivileged
+       ├── nesting=1, keyctl=1
+       ├── 4 CPU, 4 GB RAM
+       ├── /dev/shm: 256 MB (wajib untuk Evolution/Chromium)
+       └── Docker + Docker Compose
+```
+
+### 18.2 Setup LXC
+
+```bash
+# Config LXC ( `/etc/pve/lxc/<CTID>.conf` )
+arch: amd64
+cores: 4
+memory: 4096
+swap: 0
+lxc.apparmor.profile: unconfined
+lxc.cgroup2.memory.max: 4294967296
+lxc.mount.auto: proc:mixed sys:ro
+
+# Penting:
+lxc.mount.entry: /dev/shm dev/shm none bind,create=dir 0 0
+
+# Fitur untuk Docker-in-LXC:
+lxc.cgroup2.devices.allow: a
+lxc.cap.drop:
+```
+
+> **Catatan**: `kernel.shmmax` dan `kernel.shmall` **tidak perlu** di-tuning untuk PostgreSQL di dalam Docker. Tuning itu relevan untuk PostgreSQL di host Linux, bukan untuk container Docker.
+
+### 18.3 Docker Compose Services
+
+| Service | Image | Port | Notes |
+|---------|-------|------|-------|
+| caddy | caddy:alpine | 80, 443 | Reverse proxy + SSL auto |
+| api | build: ./backend | internal | Express.js + TS |
+| worker | build: ./backend | internal | Bull consumer (entry: worker.ts) |
+| scheduler | build: ./backend | internal | Cron jobs (entry: scheduler.ts) |
+| postgres | postgres:15-alpine | 5432 (internal) | + PgBouncer sidecar |
+| redis | redis:7-alpine | 6379 (internal) | |
+| evolution | athenna/evolution-api | 8080 (internal) | WA API, perlu --shm-size |
+
+### 18.4 Estimasi Resource
+
+| Service | RAM (normal) | RAM (puncak) |
+|---------|:-----------:|:-----------:|
+| PostgreSQL + PgBouncer | 300–500 MB | 800 MB |
+| Redis | 50–100 MB | 200 MB |
+| API | 150–250 MB | 400 MB |
+| Worker | 100–200 MB | 300 MB |
+| Scheduler | <50 MB | 100 MB |
+| Evolution API (1 instance) | 500 MB–1.2 GB | 2 GB |
+| Caddy | 30–50 MB | 80 MB |
+| **Total** | **1.5–2.3 GB** | **~3.8 GB** |
+
+Dengan LXC 4 GB RAM, masih ada ruang untuk cache Linux dan lonjakan.
+
+### 18.5 Backup Strategy
+
+- **Harian**: pg_dump jam 03:00 WIB → compress gzip → simpan di secondary storage
+- **Mingguan**: Full DB dump + Docker volume backup
+- **Pre-migration**: Otomatis dump sebelum `docker compose up` dengan migrasi baru
+- **Retensi**: 14 hari untuk harian, 2 bulan untuk mingguan
+- **Cek**: Alert email jika backup gagal
+
+### 18.6 CI/CD
+
+```yaml
+# GitHub Actions workflow
+on: push to main
+jobs:
+  ci:
+    - lint (ESLint + Prettier)
+    - typecheck (tsc --noEmit)
+    - test (vitest, coverage >70%)
+  cd:
+    - docker build (api, worker, scheduler)
+    - docker compose pull di server
+    - docker compose up -d
+    - health check (curl /health)
+    - rollback jika health check gagal
+```
+
+---
+
+## 19. Glossary
+
+| Istilah | Definisi |
+|---------|----------|
+| **Owner** | Pemilik / pengelola properti kos |
+| **Penghuni / Tenant** | Orang yang menyewa kamar kos |
+| **Properti** | Satu bangunan kos (bisa punya banyak kamar) |
+| **Tagihan / Bill** | Tagihan sewa bulanan per penghuni |
+| **Tiket / Ticket** | Laporan komplain / gangguan dari penghuni |
+| **Due date** | Tanggal jatuh tempo pembayaran (default: tgl 10) |
+| **DP / Deposit** | Uang jaminan yang disimpan saat masuk kos |
+| **Prorata** | Perhitungan proporsional (tagihan sebagian bulan) |
+| **OKR** | Objective & Key Results — framework goal setting |
+| **NPS** | Net Promoter Score — metrik loyalitas pengguna |
+| **SLA** | Service Level Agreement — jaminan tingkat layanan |
+| **PDP** | Perlindungan Data Pribadi — UU No. 27 Tahun 2022 |
+| **Sen** | Satuan uang terkecil. Rp10.000 = 1.000.000 sen |
+| **DLQ** | Dead Letter Queue — antrian pesan gagal setelah retry habis |
+| **CRON** | Job scheduler di server untuk task berulang |
+| **Snap** | Midtrans payment page (hosted, redirect) |
+| **LXC** | Linux Containers — virtualisasi ringan di Proxmox |
+| **PgBouncer** | Connection pooler untuk PostgreSQL |

@@ -423,7 +423,7 @@ Setiap notifikasi WA tercatat di `notification_logs`:
 
 ```
 Proxmox Host
-  └── LXC Ubuntu (unprivileged, nesting enabled)
+   └── LXC Debian (unprivileged, nesting enabled)
        └── Docker Compose
 
             ┌──────────┐
@@ -485,6 +485,8 @@ External:
 - **Static assets**: Caddy cache. Next.js SSG/ISR. CDN opsional (Cloudflare).
 - **Health check**: Tiap service punya endpoint health. Caddy routing: `GET /health` → aggregator.
 - **Shared types**: Monorepo `shared/` package untuk tipe TypeScript + validasi Zod. Dipake bareng API + Worker + Scheduler.
+- **ORM**: Prisma + Prisma Migrate. Type-safe, otomatis generate tipe dari schema. Pake raw SQL untuk query kompleks (dashboard aggregation).
+- **Monorepo**: pnpm workspaces. Struktur: `packages/{api,worker,scheduler,shared,frontend}`.
 
 ---
 
@@ -1007,7 +1009,7 @@ Status Dashboard:
 
 ```
 Proxmox Host
-  └── LXC Container (Ubuntu 24.04 LTS)
+  └── LXC Container (Debian 13)
        ├── unprivileged
        ├── nesting=1, keyctl=1
        ├── 4 CPU, 4 GB RAM
@@ -1074,20 +1076,61 @@ Dengan LXC 4 GB RAM, masih ada ruang untuk cache Linux dan lonjakan.
 
 ### 18.6 CI/CD
 
+Pipeline: **GitHub Actions → GHCR (GitHub Container Registry) → SSH → Docker Compose Pull**
+
 ```yaml
-# GitHub Actions workflow
-on: push to main
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository }}
+
 jobs:
   ci:
-    - lint (ESLint + Prettier)
-    - typecheck (tsc --noEmit)
-    - test (vitest, coverage >70%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: 'pnpm' }
+      - run: pnpm install
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test -- --coverage
+
   cd:
-    - docker build (api, worker, scheduler)
-    - docker compose pull di server
-    - docker compose up -d
-    - health check (curl /health)
-    - rollback jika health check gagal
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build & Push images
+        run: |
+          docker build -t $REGISTRY/api:latest -f docker/api.Dockerfile .
+          docker push $REGISTRY/api:latest
+          docker build -t $REGISTRY/worker:latest -f docker/worker.Dockerfile .
+          docker push $REGISTRY/worker:latest
+          docker build -t $REGISTRY/scheduler:latest -f docker/scheduler.Dockerfile .
+          docker push $REGISTRY/scheduler:latest
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /opt/kospintar
+            docker compose pull
+            docker compose up -d
+            sleep 10
+            curl -f http://localhost/health || docker compose rollback
 ```
 
 ---

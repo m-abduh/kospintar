@@ -25,8 +25,8 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────┐
-│   Frontend   │────▶│  PostgreSQL  │◀────│  Midtrans│
-│  (EJS/React) │     │              │     │(Payment) │
+│   Next.js     │────▶│  PostgreSQL  │◀────│  Midtrans│
+│  (Frontend)   │     │              │     │(Payment) │
 └──────┬───────┘     └──────┬───────┘     └──────────┘
        │                    │
        │            ┌───────▼───────┐
@@ -94,14 +94,14 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 
 | Layer | Teknologi | Biaya |
 |-------|-----------|-------|
-| Frontend | EJS / React | Gratis |
-| Backend | Express.js | Gratis |
-| Database | PostgreSQL | Gratis (Neon) / VPS |
+| Frontend | **Next.js** (App Router) | Gratis (Vercel) |
+| Backend | **Express.js** (API Server) | Gratis |
+| Database | PostgreSQL (Neon) | Gratis (500MB) |
 | Auth | JWT | Gratis |
 | WA API | Evolution API (Docker) | Gratis (open source) |
 | QR Code | Evolution API `/instance/connect` | Native REST API |
 | Payment | Midtrans | Fee per transaksi 1-2% |
-| Hosting | VPS (Railway/DO) | ~Rp150k/bln |
+| Hosting | Vercel (FE) + VPS (BE + Evolution) | ~Rp150k/bln |
 
 ## 7. Alur Koneksi WhatsApp (QR Evolution API)
 
@@ -130,41 +130,55 @@ Kospintar adalah platform SaaS manajemen kos terintegrasi via WhatsApp. Memberda
 
 ```
 kospintar/
-├── src/
-│   ├── index.js                    # Entry point Express
-│   ├── config/
-│   │   └── db.js                   # Koneksi PostgreSQL
-│   ├── middleware/
-│   │   └── auth.js                 # JWT middleware
-│   ├── routes/
-│   │   ├── auth.js                 # Register / Login
-│   │   ├── properties.js           # CRUD properti
-│   │   ├── tenants.js              # CRUD penghuni
-│   │   ├── bills.js                # Tagihan + Midtrans
-│   │   ├── tickets.js              # Tiket komplain
-│   │   └── wa.js                   # QR, send, webhook Evolution
-│   ├── services/
-│   │   ├── evolution.js            # Client Evolution API
-│   │   └── midtrans.js             # Client Midtrans
-│   └── schema.sql                  # Database schema
-├── views/                          # EJS templates
-│   ├── layout.ejs
-│   ├── login.ejs
-│   ├── dashboard.ejs
-│   ├── properties.ejs
-│   ├── tenants.ejs
-│   ├── bills.ejs
-│   ├── tickets.ejs
-│   └── wa.ejs
-├── public/                         # Static files
+├── backend/                        # Express.js API server
+│   ├── src/
+│   │   ├── index.js                # Entry point Express
+│   │   ├── config/
+│   │   │   └── db.js               # Koneksi PostgreSQL
+│   │   ├── middleware/
+│   │   │   └── auth.js             # JWT middleware
+│   │   ├── routes/
+│   │   │   ├── auth.js             # Register / Login
+│   │   │   ├── properties.js       # CRUD properti
+│   │   │   ├── tenants.js          # CRUD penghuni
+│   │   │   ├── bills.js            # Tagihan + Midtrans
+│   │   │   ├── tickets.js          # Tiket komplain
+│   │   │   └── wa.js               # QR, send, webhook Evolution
+│   │   ├── services/
+│   │   │   ├── evolution.js        # Client Evolution API
+│   │   │   └── midtrans.js         # Client Midtrans
+│   │   └── schema.sql              # Database schema
+│   ├── .env
+│   └── package.json
+├── frontend/                       # Next.js App
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.js
+│   │   │   ├── page.js             # Landing
+│   │   │   ├── login/page.js
+│   │   │   ├── register/page.js
+│   │   │   └── dashboard/
+│   │   │       ├── page.js
+│   │   │       ├── properties/
+│   │   │       ├── tenants/
+│   │   │       ├── bills/
+│   │   │       ├── tickets/
+│   │   │       └── wa/
+│   │   ├── components/
+│   │   │   ├── Sidebar.js
+│   │   │   ├── Header.js
+│   │   │   └── QRModal.js
+│   │   └── lib/
+│   │       └── api.js              # Client untuk panggil backend
+│   ├── .env.local
+│   └── package.json
 ├── .env
-├── package.json
 └── README.md
 ```
 
 ## 11. Next Steps
 
-1. Init Express.js project
+1. Init Express.js backend + Next.js frontend
 2. Setup PostgreSQL + schema
 3. Build auth (register/login)
 4. CRUD properti + penghuni

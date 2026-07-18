@@ -14,11 +14,25 @@
 
 | Fitur | Manfaat |
 |-------|---------|
-| **CRUD Properti & Penghuni** | Data rapi di satu tempat |
-| **Auto-billing + WA Reminder** | Tagihan terbit otomatis. Penghuni diingatkan H-7, H-3, H-1 via WA |
-| **Bayar via Midtrans** | Link QRIS/VA dari WA — click & pay. Gak perlu ketemu owner |
-| **Komplain WA → Tiket** | Penghuni chat WA -> auto jadi tiket -> owner reply dari dashboard |
-| **Laporan Keuangan** | Rekap pemasukan per properti, grafik 6 bulan |
+| **CRUD Properti & Penghuni** | Data rapi di satu tempat. Room number otomatis unique. |
+| **Auto-billing + due_date logic** | Tagihan terbit tiap tgl 25 untuk bulan depan. Jatuh tempo tiap tgl 10. Prorata otomatis kalau checkout tengah bulan. |
+| **WA Reminder H-7/H-3/H-1/H+1** | Penghuni diingatkan otomatis via WA. Bisa diedit template-nya. |
+| **Bayar via Midtrans** | Link signed token dari WA — klik & bayar pake QRIS/VA. Gak perlu login. |
+| **Komplain WA → Tiket** | Penghuni chat WA → auto jadi tiket + auto-reply. Priority detection keyword darurat. |
+| **Laporan Keuangan** | Rekap pemasukan, okupansi, grafik 6 bulan. |
+| **Chat dari Dashboard** | Kirim pesan, reply tiket, histori percakapan. |
+
+## Kenapa Ini Production-Ready?
+
+- **Semua nominal pake INTEGER (sen)** — gak ada floating point error
+- **WA queue via Redis Bull** — rate limited, retry, dead letter queue
+- **Signed token untuk payment** — tenant bayar tanpa login
+- **Midtrans webhook signature only** — no IP whitelist
+- **Graceful shutdown + health check** — deployment aman
+- **Audit log + PDP compliance** — hapus akun, anonimisasi data
+- **Backup harian ke S3** — RPO <24 jam, RTO <4 jam
+- **PgBouncer dari awal** — gak kena max_connection bottleneck
+- **TypeScript + Zod validation** — zero runtime surprises
 
 ## Target Persona
 
@@ -26,15 +40,17 @@
 
 ## Tech Stack
 
-Next.js | Express.js | PostgreSQL | Evolution API (WA) | Midtrans | Docker
+Next.js (TS) → Nginx → Express.js (TS) → PostgreSQL + PgBouncer → Redis (WA queue) → S3 (files) → Docker
 
-## Model
+## Pricing (MVP)
 
-**Free** selama MVP (max 3 properti). **Subscription** mulai Rp49k/bln di v2.
+**Gratis** — max 3 properti, 50 tenant/properti, 500 WA pesan/bulan.
+
+v2: Subscription mulai Rp49k/bulan.
 
 ## Status
 
-🚧 Pre-launch. PRD selesai. Implementasi menyusul.
+🚧 Pre-launch. PRD final. Siap implementasi.
 
 ---
 

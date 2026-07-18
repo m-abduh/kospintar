@@ -24,6 +24,42 @@ Next.js ──▶ Express API ──▶ PostgreSQL
 | WA | Evolution API (Docker) |
 | Payment | Midtrans |
 
+## Tools & Libraries
+
+### Backend (Express.js)
+
+| Package | Fungsi |
+|---------|--------|
+| `express` | Web framework |
+| `cors` | CORS header |
+| `pg` | PostgreSQL driver |
+| `bcryptjs` | Hash password |
+| `jsonwebtoken` | JWT auth |
+| `dotenv` | Environment config |
+| `uuid` | Generate ID |
+| `morgan` | HTTP request logger |
+| `axios` | HTTP client (panggil Evolution API & Midtrans) |
+| `lodash` | Utility helpers |
+| `node-cron` | Jadwal auto-billing & reminder |
+| `multer` | Upload file (foto/KTP) |
+
+### Frontend (Next.js)
+
+| Package | Fungsi |
+|---------|--------|
+| `next` `react` `react-dom` | Framework |
+| `axios` | HTTP client ke backend |
+| `zustand` | State management |
+| `react-hook-form` | Form handling + validasi |
+| `@tanstack/react-query` | Data fetching & cache |
+| `lodash` | Utility helpers |
+| `date-fns` | Format tanggal |
+| `recharts` | Grafik & chart dashboard |
+| `sonner` | Toast notifikasi |
+| `tailwindcss` | CSS styling |
+| `lucide-react` | Ikon |
+| `next-auth` | Auth (opsional, bisa JWT manual) |
+
 ## Struktur
 
 ```

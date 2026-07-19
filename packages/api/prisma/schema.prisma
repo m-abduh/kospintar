@@ -145,9 +145,8 @@ model tenants {
   deposit           Int          @default(0)
   due_date_override Int?         @map("due_date_override") @db.SmallInt()
   contract_start    DateTime     @map("contract_start") @db.Date
-  contract_end      DateTime     @map("contract_end") @db.Date
-  status            TenantStatus @default(active)
-  ktp_url           String?      @map("ktp_url") @db.VarChar(500)
+  contract_end    DateTime     @map("contract_end") @db.Date
+  status          TenantStatus @default(active)
   notes             String?
   created_at        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   updated_at        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()

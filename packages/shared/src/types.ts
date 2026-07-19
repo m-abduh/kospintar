@@ -36,7 +36,6 @@ export interface Tenant {
   contract_start: Date;
   contract_end: Date;
   status: "active" | "checkout";
-  ktp_url: string | null;
   notes: string | null;
   created_at: Date;
   updated_at: Date;

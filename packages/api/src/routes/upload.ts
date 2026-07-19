@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { logger } from "../config/logger.js";
 import multer from "multer";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuid } from "uuid";
 import { config } from "../config/index.js";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
@@ -60,40 +59,6 @@ router.post("/property/:propertyId", upload.single("file"), async (req, res) => 
     res.json({ url });
   } catch (error) {
     logger.error(error, "Upload error:");
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-router.post("/tenant/ktp/:tenantId", upload.single("file"), async (req, res) => {
-  try {
-    const tenant = await prisma.tenants.findFirst({
-      where: { id: req.params.tenantId, property: { owner_id: req.user!.id } },
-    });
-    if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
-
-    const ext = req.file!.originalname.split(".").pop();
-    const key = `ktp/${req.params.tenantId}/${uuid()}.${ext}`;
-
-    await s3.send(new PutObjectCommand({
-      Bucket: config.s3.bucket,
-      Key: key,
-      Body: req.file!.buffer,
-      ContentType: req.file!.mimetype,
-    }));
-
-    const signedUrl = await getSignedUrl(s3, new GetObjectCommand({
-      Bucket: config.s3.bucket,
-      Key: key,
-    }), { expiresIn: 3600 });
-
-    await prisma.tenants.update({
-      where: { id: req.params.tenantId },
-      data: { ktp_url: signedUrl },
-    });
-
-    res.json({ url: signedUrl });
-  } catch (error) {
-    logger.error(error, "Upload KTP error:");
     res.status(500).json({ error: "Upload failed" });
   }
 });

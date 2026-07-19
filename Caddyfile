@@ -1,0 +1,17 @@
+http://localhost {
+    reverse_proxy frontend:3001
+}
+
+api.localhost {
+    reverse_proxy api:3000
+}
+
+localhost {
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+
+    handle {
+        reverse_proxy frontend:3001
+    }
+}

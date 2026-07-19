@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+}
+
+enum PropertyStatus {
+  active
+  inactive
+}
+
+enum TenantStatus {
+  active
+  checkout
+}
+
+enum BillStatus {
+  pending
+  paid
+  expired
+  void
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+}
+
+enum TicketSource {
+  wa
+  manual
+}
+
+enum WaConnectionStatus {
+  connected
+  disconnected
+  connecting
+  expired
+}
+
+enum ChatDirection {
+  outgoing
+  incoming
+}
+
+enum ChatMessageStatus {
+  sent
+  delivered
+  read
+  failed
+}
+
+enum NotificationType {
+  reminder
+  payment_confirmation
+  ticket_reply
+  ticket_created
+}
+
+enum NotificationStatus {
+  sent
+  delivered
+  failed
+}
+
+enum PaymentStatus {
+  pending
+  settlement
+  expire
+  deny
+  cancel
+  failure
+}
+
+enum CronJobStatus {
+  running
+  completed
+  failed
+}
+
+model users {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String    @db.VarChar(100)
+  email         String    @unique @db.VarChar(255)
+  password_hash String    @db.VarChar(255)
+  phone         String    @db.VarChar(20)
+  role          UserRole  @default(owner)
+  is_active     Boolean   @default(true)
+  deleted_at    DateTime? @map("deleted_at") @db.Timestamptz()
+  created_at    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at    DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  properties     properties[]
+  audit_logs     audit_logs[]
+  cron_logs      cron_logs[]
+
+  @@map("users")
+}
+
+model properties {
+  id          String     @id @default(uuid()) @db.Uuid
+  owner_id    String     @map("owner_id") @db.Uuid
+  name        String     @db.VarChar(200)
+  address     String?
+  total_rooms Int
+  photo_url   String?    @map("photo_url") @db.VarChar(500)
+  is_active   Boolean    @default(true)
+  deleted_at  DateTime?  @map("deleted_at") @db.Timestamptz()
+  created_at  DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at  DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  owner           users              @relation(fields: [owner_id], references: [id])
+  tenants         tenants[]
+  bills           bills[]
+  tickets         tickets[]
+  chat_messages   chat_messages[]
+  message_templates message_templates[]
+  wa_instances    wa_instances[]
+
+  @@map("properties")
+}
+
+model tenants {
+  id                String       @id @default(uuid()) @db.Uuid
+  property_id       String       @map("property_id") @db.Uuid
+  name              String       @db.VarChar(100)
+  phone             String       @db.VarChar(20)
+  room_number       String       @map("room_number") @db.VarChar(20)
+  rent_amount       Int          @map("rent_amount")
+  deposit           Int          @default(0)
+  due_date_override Int?         @map("due_date_override") @db.SmallInt()
+  contract_start    DateTime     @map("contract_start") @db.Date
+  contract_end      DateTime     @map("contract_end") @db.Date
+  status            TenantStatus @default(active)
+  ktp_url           String?      @map("ktp_url") @db.VarChar(500)
+  notes             String?
+  created_at        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  property      properties     @relation(fields: [property_id], references: [id])
+  bills         bills[]
+  chat_messages chat_messages[]
+  tickets       tickets[]
+
+  @@unique([property_id, room_number])
+  @@index([property_id, status])
+  @@index([property_id, phone])
+  @@map("tenants")
+}
+
+model bills {
+  id                 String     @id @default(uuid()) @db.Uuid
+  tenant_id          String     @map("tenant_id") @db.Uuid
+  property_id        String     @map("property_id") @db.Uuid
+  amount             Int
+  due_date           DateTime   @map("due_date") @db.Date
+  period_label       String     @map("period_label") @db.VarChar(7)
+  status             BillStatus @default(pending)
+  paid_at            DateTime?  @map("paid_at") @db.Timestamptz()
+  midtrans_order_id  String?    @map("midtrans_order_id") @db.VarChar(50)
+  void_reason        String?    @map("void_reason") @db.VarChar(200)
+  created_at         DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at         DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant        tenants        @relation(fields: [tenant_id], references: [id])
+  property      properties     @relation(fields: [property_id], references: [id])
+  payment_logs  payment_logs[]
+  notification_logs notification_logs[]
+
+  @@unique([tenant_id, period_label])
+  @@index([tenant_id, period_label])
+  @@index([property_id, due_date])
+  @@index([property_id, status])
+  @@map("bills")
+}
+
+model payment_logs {
+  id                       String   @id @default(uuid()) @db.Uuid
+  bill_id                  String   @map("bill_id") @db.Uuid
+  midtrans_transaction_id  String   @unique @map("midtrans_transaction_id") @db.VarChar(100)
+  midtrans_order_id        String   @map("midtrans_order_id") @db.VarChar(50)
+  status                   PaymentStatus
+  gross_amount             Int      @map("gross_amount")
+  raw_response             Json     @map("raw_response")
+  created_at               DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  bill bills @relation(fields: [bill_id], references: [id])
+
+  @@index([midtrans_order_id])
+  @@index([bill_id])
+  @@map("payment_logs")
+}
+
+model tickets {
+  id             String         @id @default(uuid()) @db.Uuid
+  property_id    String         @map("property_id") @db.Uuid
+  tenant_id      String?        @map("tenant_id") @db.Uuid
+  ticket_number  String         @unique @map("ticket_number") @db.VarChar(20)
+  title          String         @db.VarChar(200)
+  description    String?
+  status         TicketStatus   @default(open)
+  priority       TicketPriority @default(medium)
+  source         TicketSource
+  wa_message_id  String?        @map("wa_message_id") @db.VarChar(100)
+  closed_at      DateTime?      @map("closed_at") @db.Timestamptz()
+  created_at     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at     DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+
+  property          properties          @relation(fields: [property_id], references: [id])
+  tenant            tenants?            @relation(fields: [tenant_id], references: [id])
+  chat_messages     chat_messages[]
+  notification_logs notification_logs[]
+
+  @@index([property_id, status])
+  @@index([property_id, priority, status])
+  @@map("tickets")
+}
+
+model chat_messages {
+  id             String            @id @default(uuid()) @db.Uuid
+  ticket_id      String?           @map("ticket_id") @db.Uuid
+  tenant_id      String            @map("tenant_id") @db.Uuid
+  property_id    String            @map("property_id") @db.Uuid
+  direction      ChatDirection
+  message_body   String            @map("message_body")
+  wa_message_id  String?           @map("wa_message_id") @db.VarChar(100)
+  status         ChatMessageStatus @default(sent)
+  created_at     DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+
+  ticket tickets? @relation(fields: [ticket_id], references: [id])
+  tenant tenants  @relation(fields: [tenant_id], references: [id])
+  property properties @relation(fields: [property_id], references: [id])
+
+  @@index([tenant_id, created_at])
+  @@map("chat_messages")
+}
+
+model message_templates {
+  id          String    @id @default(uuid()) @db.Uuid
+  property_id String?   @map("property_id") @db.Uuid
+  name        String    @db.VarChar(50)
+  body        String
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at  DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  property properties? @relation(fields: [property_id], references: [id])
+
+  @@unique([property_id, name])
+  @@map("message_templates")
+}
+
+model wa_instances {
+  id                String            @id @default(uuid()) @db.Uuid
+  property_id       String            @unique @map("property_id") @db.Uuid
+  instance_name     String            @map("instance_name") @db.VarChar(100)
+  phone_number      String            @map("phone_number") @db.VarChar(20)
+  connection_status WaConnectionStatus @map("connection_status") @default(disconnected)
+  last_connected_at DateTime?         @map("last_connected_at") @db.Timestamptz()
+  created_at        DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updated_at        DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+
+  property properties @relation(fields: [property_id], references: [id])
+
+  @@map("wa_instances")
+}
+
+model notification_logs {
+  id               String             @id @default(uuid()) @db.Uuid
+  bill_id          String?            @map("bill_id") @db.Uuid
+  ticket_id        String?            @map("ticket_id") @db.Uuid
+  chat_message_id  String?            @map("chat_message_id") @db.Uuid
+  type             NotificationType
+  recipient_phone  String             @map("recipient_phone") @db.VarChar(20)
+  message_body     String             @map("message_body")
+  status           NotificationStatus
+  error_message    String?            @map("error_message")
+  sent_at          DateTime           @map("sent_at") @db.Timestamptz()
+
+  bill         bills?         @relation(fields: [bill_id], references: [id])
+  ticket       tickets?       @relation(fields: [ticket_id], references: [id])
+
+  @@map("notification_logs")
+}
+
+model audit_logs {
+  id          String   @id @default(uuid()) @db.Uuid
+  user_id     String   @map("user_id") @db.Uuid
+  action      String   @db.VarChar(50)
+  entity_type String   @map("entity_type") @db.VarChar(50)
+  entity_id   String   @map("entity_id") @db.Uuid
+  old_data    Json?    @map("old_data")
+  new_data    Json?    @map("new_data")
+  ip_address  String   @map("ip_address") @db.VarChar(50)
+  created_at  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@index([entity_type, entity_id, created_at])
+  @@map("audit_logs")
+}
+
+model usage_logs {
+  id            String    @id @default(uuid()) @db.Uuid
+  owner_id      String    @map("owner_id") @db.Uuid
+  property_id   String?   @map("property_id") @db.Uuid
+  month         String    @db.VarChar(7)
+  wa_messages   Int       @default(0) @map("wa_messages")
+  created_at    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([owner_id, month])
+  @@map("usage_logs")
+}
+
+model cron_logs {
+  id            String    @id @default(uuid()) @db.Uuid
+  job_name      String    @map("job_name") @db.VarChar(50)
+  status        CronJobStatus
+  started_at    DateTime  @map("started_at") @db.Timestamptz()
+  finished_at   DateTime? @map("finished_at") @db.Timestamptz()
+  summary       Json?
+  error_message String?   @map("error_message")
+
+  @@map("cron_logs")
+}

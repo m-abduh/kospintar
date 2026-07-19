@@ -1,0 +1,135 @@
+services:
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - frontend
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: kospintar
+      POSTGRES_PASSWORD: kospintar
+      POSTGRES_DB: kospintar
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0
+    environment:
+      DATABASE_URL: postgres://kospintar:kospintar@postgres:5432/kospintar
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+    depends_on:
+      - postgres
+    ports:
+      - "6432:6432"
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+  evolution:
+    image: atendai/evolution-api:v2.1.1
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://kospintar:kospintar@postgres:5432/kospintar
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+    ports:
+      - "8080:8080"
+    shm_size: "256mb"
+    depends_on:
+      - postgres
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - PAY_SECRET=${PAY_SECRET}
+      - EVOLUTION_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
+      - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
+      - MIDTRANS_SNAP_URL=${MIDTRANS_SNAP_URL:-https://app.sandbox.midtrans.com/api/v1}
+      - MIDTRANS_IS_PRODUCTION=${MIDTRANS_IS_PRODUCTION:-false}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+    depends_on:
+      - postgres
+      - redis
+      - evolution
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - EVOLUTION_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+      - evolution
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - EVOLUTION_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - PAY_SECRET=${PAY_SECRET}
+      - APP_URL=${APP_URL:-http://localhost:3000}
+    depends_on:
+      - postgres
+      - redis
+      - evolution
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost
+    depends_on:
+      - api
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

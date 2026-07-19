@@ -1,0 +1,23 @@
+{
+  "name": "kospintar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SaaS manajemen kos all-in-one via dashboard + WhatsApp",
+  "scripts": {
+    "dev": "pnpm --filter @kospintar/api dev",
+    "dev:worker": "pnpm --filter @kospintar/worker dev",
+    "dev:scheduler": "pnpm --filter @kospintar/scheduler dev",
+    "dev:frontend": "pnpm --filter @kospintar/frontend dev",
+    "build": "pnpm --filter @kospintar/shared build && pnpm --filter @kospintar/api build && pnpm --filter @kospintar/worker build && pnpm --filter @kospintar/scheduler build && pnpm --filter @kospintar/frontend build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @kospintar/api prisma:migrate",
+    "db:generate": "pnpm --filter @kospintar/api prisma:generate",
+    "db:seed": "pnpm --filter @kospintar/api prisma:seed"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=8"
+  }
+}

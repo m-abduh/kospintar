@@ -30,7 +30,7 @@ router.get("/:tenantId", async (req, res) => {
 
     res.json({ messages });
   } catch (error) {
-    logger.error("Chat history error:", error);
+    logger.error(error, "Chat history error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -64,7 +64,7 @@ router.post("/send", validate(chatSendSchema), async (req, res) => {
 
     res.json({ message });
   } catch (error) {
-    logger.error("Chat send error:", error);
+    logger.error(error, "Chat send error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: tenants, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    logger.error("List tenants error:", error);
+    logger.error(error, "List tenants error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -62,7 +62,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ tenant });
   } catch (error) {
-    logger.error("Get tenant error:", error);
+    logger.error(error, "Get tenant error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -108,7 +108,7 @@ router.post("/", checkFreeTierTenant, validate(tenantSchema), async (req, res) =
 
     res.status(201).json({ tenant });
   } catch (error) {
-    logger.error("Create tenant error:", error);
+    logger.error(error, "Create tenant error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -160,7 +160,7 @@ router.put("/:id", validate(tenantSchema), async (req, res) => {
 
     res.json({ tenant });
   } catch (error) {
-    logger.error("Update tenant error:", error);
+    logger.error(error, "Update tenant error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -207,7 +207,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ tenant: updated });
   } catch (error) {
-    logger.error("Delete tenant error:", error);
+    logger.error(error, "Delete tenant error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

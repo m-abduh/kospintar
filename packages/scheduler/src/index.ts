@@ -369,7 +369,9 @@ logger.info("  wa_health_check: every 5min (retry 3x, alert on failure)");
 
 async function shutdown() {
   logger.info("Shutting down scheduler");
-  cron.destroy();
+  const tasks = cron.getTasks();
+  tasks.forEach((t) => t.stop());
+  tasks.clear();
   await prisma.$disconnect();
   await redis.quit();
   process.exit(0);

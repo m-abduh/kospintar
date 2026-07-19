@@ -64,7 +64,7 @@ const waSendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: config.rateLimit.wa_send,
   message: { error: "WA send rate limit exceeded" },
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.ip || "unknown",
 });
 
 app.use("/api/", globalLimiter);

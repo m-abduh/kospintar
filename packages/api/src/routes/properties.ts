@@ -27,7 +27,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: properties, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    logger.error("List properties error:", error);
+    logger.error(error, "List properties error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -59,7 +59,7 @@ router.get("/:id", async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error("Get property error:", error);
+    logger.error(error, "Get property error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -78,7 +78,7 @@ router.post("/", checkFreeTierProperty, validate(propertySchema), async (req, re
 
     res.status(201).json({ property });
   } catch (error) {
-    logger.error("Create property error:", error);
+    logger.error(error, "Create property error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -106,7 +106,7 @@ router.put("/:id", validate(propertySchema), async (req, res) => {
 
     res.json({ property });
   } catch (error) {
-    logger.error("Update property error:", error);
+    logger.error(error, "Update property error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -147,7 +147,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ message: "Property deleted" });
   } catch (error) {
-    logger.error("Delete property error:", error);
+    logger.error(error, "Delete property error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

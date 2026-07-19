@@ -102,7 +102,7 @@ router.post("/connect", validate(waConnectSchema), async (req, res) => {
       status: "connecting",
     });
   } catch (error) {
-    logger.error("WA connect error:", error);
+    logger.error(error, "WA connect error:");
     res.status(500).json({ error: "Failed to connect WhatsApp" });
   }
 });
@@ -128,7 +128,7 @@ router.get("/qr/:propertyId", async (req, res) => {
     const qrData = await qrRes.json() as any;
     res.json({ qr_code: qrData.base64 || qrData.qrcode });
   } catch (error) {
-    logger.error("WA QR error:", error);
+    logger.error(error, "WA QR error:");
     res.status(500).json({ error: "Failed to get QR code" });
   }
 });
@@ -165,7 +165,7 @@ router.get("/status/:propertyId", async (req, res) => {
 
     res.json({ status: connectionStatus });
   } catch (error) {
-    logger.error("WA status error:", error);
+    logger.error(error, "WA status error:");
     res.status(500).json({ error: "Failed to check status" });
   }
 });
@@ -218,7 +218,7 @@ router.post("/send", validate(waSendSchema), async (req, res) => {
 
     res.json({ message_id: sendData.key?.id || "sent" });
   } catch (error) {
-    logger.error("WA send error:", error);
+    logger.error(error, "WA send error:");
     res.status(500).json({ error: "Failed to send message" });
   }
 });
@@ -249,7 +249,7 @@ router.post("/disconnect/:propertyId", async (req, res) => {
 
     res.json({ message: "WhatsApp disconnected" });
   } catch (error) {
-    logger.error("WA disconnect error:", error);
+    logger.error(error, "WA disconnect error:");
     res.status(500).json({ error: "Failed to disconnect" });
   }
 });
@@ -356,7 +356,7 @@ waWebhookRouter.post("/:instanceName", async (req, res) => {
 
     res.status(200).json({ status: "ok" });
   } catch (error) {
-    logger.error("WA webhook error:", error);
+    logger.error(error, "WA webhook error:");
     res.status(200).json({ status: "ok" });
   }
 });

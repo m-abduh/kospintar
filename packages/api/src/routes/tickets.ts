@@ -48,7 +48,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: tickets, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    logger.error("List tickets error:", error);
+    logger.error(error, "List tickets error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -74,7 +74,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ ticket });
   } catch (error) {
-    logger.error("Get ticket error:", error);
+    logger.error(error, "Get ticket error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -109,7 +109,7 @@ router.post("/", validate(createTicketSchema), async (req, res) => {
 
     res.status(201).json({ ticket });
   } catch (error) {
-    logger.error("Create ticket error:", error);
+    logger.error(error, "Create ticket error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -141,7 +141,7 @@ router.put("/:id", validate(ticketUpdateSchema), async (req, res) => {
 
     res.json({ ticket });
   } catch (error) {
-    logger.error("Update ticket error:", error);
+    logger.error(error, "Update ticket error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -182,7 +182,7 @@ router.post("/:id/reply", validate(ticketReplySchema), async (req, res) => {
 
     res.json({ chat_message: chatMessage });
   } catch (error) {
-    logger.error("Reply ticket error:", error);
+    logger.error(error, "Reply ticket error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
@@ -16,7 +16,7 @@ interface Tenant {
   property: { id: string; name: string };
 }
 
-export default function TenantsPage() {
+function TenantsContent() {
   const searchParams = useSearchParams();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +39,7 @@ export default function TenantsPage() {
   }
 
   return (
-    <AppLayout>
+    <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Penghuni</h1>
@@ -84,6 +84,16 @@ export default function TenantsPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export default function TenantsPage() {
+  return (
+    <AppLayout>
+      <Suspense fallback={<div className="card animate-pulse h-16" />}>
+        <TenantsContent />
+      </Suspense>
     </AppLayout>
   );
 }

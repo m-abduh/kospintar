@@ -5,6 +5,7 @@ import { prisma } from "../config/database.js";
 import { config } from "../config/index.js";
 import { registerSchema, loginSchema } from "@kospintar/shared";
 import { validate } from "../middleware/validate.js";
+import { verifyJWT } from "../middleware/auth.js";
 import { z } from "zod";
 import pino from "pino";
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });

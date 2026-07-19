@@ -68,7 +68,7 @@ router.post("/:signed_token", async (req, res) => {
 
     res.json({ redirect_url: midtransData.redirect_url, token: midtransData.token });
   } catch (error) {
-    logger.error("Pay error:", error);
+    logger.error(error, "Pay error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -97,7 +97,7 @@ router.get("/:signed_token/status", async (req, res) => {
 
     res.json({ bill });
   } catch (error) {
-    logger.error("Pay status error:", error);
+    logger.error(error, "Pay status error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

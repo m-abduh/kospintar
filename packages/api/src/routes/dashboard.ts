@@ -62,7 +62,7 @@ router.get("/summary", async (req, res) => {
 
     res.json({ summaries });
   } catch (error) {
-    logger.error("Dashboard summary error:", error);
+    logger.error(error, "Dashboard summary error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -96,7 +96,7 @@ router.get("/revenue", async (req, res) => {
 
     res.json({ data });
   } catch (error) {
-    logger.error("Revenue error:", error);
+    logger.error(error, "Revenue error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

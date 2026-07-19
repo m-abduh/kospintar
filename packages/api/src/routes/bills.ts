@@ -39,7 +39,7 @@ router.get("/", verifyJWT, requireOwner, async (req, res) => {
 
     res.json({ data: bills, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    logger.error("List bills error:", error);
+    logger.error(error, "List bills error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -65,7 +65,7 @@ router.get("/:id", verifyJWT, requireOwner, async (req, res) => {
 
     res.json({ bill });
   } catch (error) {
-    logger.error("Get bill error:", error);
+    logger.error(error, "Get bill error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -105,7 +105,7 @@ router.post("/", verifyJWT, requireOwner, validate(billSchema), async (req, res)
 
     res.status(201).json({ bill });
   } catch (error) {
-    logger.error("Create bill error:", error);
+    logger.error(error, "Create bill error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -136,7 +136,7 @@ router.put("/:id/void", verifyJWT, requireOwner, validate(billVoidSchema), async
 
     res.json({ bill: updated });
   } catch (error) {
-    logger.error("Void bill error:", error);
+    logger.error(error, "Void bill error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -204,7 +204,7 @@ router.post("/webhook/midtrans", async (req, res) => {
 
     res.status(200).json({ status: "ok" });
   } catch (error) {
-    logger.error("Midtrans webhook error:", error);
+    logger.error(error, "Midtrans webhook error:");
     res.status(500).json({ error: "Internal server error" });
   }
 });

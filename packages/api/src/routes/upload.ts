@@ -59,7 +59,7 @@ router.post("/property/:propertyId", upload.single("file"), async (req, res) => 
 
     res.json({ url });
   } catch (error) {
-    logger.error("Upload error:", error);
+    logger.error(error, "Upload error:");
     res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -93,7 +93,7 @@ router.post("/tenant/ktp/:tenantId", upload.single("file"), async (req, res) => 
 
     res.json({ url: signedUrl });
   } catch (error) {
-    logger.error("Upload KTP error:", error);
+    logger.error(error, "Upload KTP error:");
     res.status(500).json({ error: "Upload failed" });
   }
 });

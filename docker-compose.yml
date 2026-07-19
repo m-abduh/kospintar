@@ -1,6 +1,7 @@
 services:
   caddy:
     image: caddy:alpine
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -14,19 +15,24 @@ services:
 
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: kospintar
-      POSTGRES_PASSWORD: kospintar
-      POSTGRES_DB: kospintar
+      POSTGRES_USER: ${POSTGRES_USER:-kospintar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-kospintar}
     volumes:
       - pg_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kospintar} -d ${POSTGRES_DB:-kospintar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   pgbouncer:
     image: edoburu/pgbouncer:1.21.0
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://kospintar:kospintar@postgres:5432/kospintar
+      DATABASE_URL: postgres://${POSTGRES_USER:-kospintar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kospintar}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 200
       DEFAULT_POOL_SIZE: 20
@@ -37,19 +43,24 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   evolution:
     image: atendai/evolution-api:v2.1.1
+    restart: unless-stopped
     environment:
       - SERVER_URL=http://localhost:8080
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://kospintar:kospintar@postgres:5432/kospintar
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-kospintar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kospintar}
       - DATABASE_CONNECTION_CLIENT_NAME=evolution
       - DATABASE_SAVE_DATA_INSTANCE=true
       - DATABASE_SAVE_DATA_NEW_MESSAGE=true
@@ -65,10 +76,11 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kospintar}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-kospintar}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET}
@@ -81,33 +93,41 @@ services:
       - MIDTRANS_IS_PRODUCTION=${MIDTRANS_IS_PRODUCTION:-false}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
     depends_on:
-      - postgres
-      - redis
-      - evolution
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
 
   worker:
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kospintar}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-kospintar}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - EVOLUTION_URL=http://evolution:8080
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
     depends_on:
-      - postgres
-      - redis
-      - evolution
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
 
   scheduler:
     build:
       context: .
       dockerfile: docker/scheduler.Dockerfile
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://kospintar:kospintar@pgbouncer:6432/kospintar
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kospintar}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-kospintar}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - EVOLUTION_URL=http://evolution:8080
@@ -115,14 +135,18 @@ services:
       - PAY_SECRET=${PAY_SECRET}
       - APP_URL=${APP_URL:-http://localhost:3000}
     depends_on:
-      - postgres
-      - redis
-      - evolution
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
 
   frontend:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost
     depends_on:

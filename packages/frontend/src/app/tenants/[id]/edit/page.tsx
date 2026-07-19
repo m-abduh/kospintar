@@ -30,8 +30,8 @@ export default function EditTenantPage() {
         name: t.name,
         phone: t.phone,
         room_number: t.room_number,
-        rent_amount: String(t.rent_amount / 1_000_000),
-        deposit: String(t.deposit / 1_000_000),
+        rent_amount: String(t.rent_amount / 100),
+        deposit: String(t.deposit / 100),
         contract_start: t.contract_start?.split("T")[0] || "",
         contract_end: t.contract_end?.split("T")[0] || "",
         due_date_override: t.due_date_override ? String(t.due_date_override) : "",
@@ -53,8 +53,8 @@ export default function EditTenantPage() {
         method: "PUT",
         body: JSON.stringify({
           ...form,
-          rent_amount: Number(form.rent_amount) * 1_000_000,
-          deposit: Number(form.deposit || 0) * 1_000_000,
+          rent_amount: Number(form.rent_amount) * 100,
+          deposit: Number(form.deposit || 0) * 100,
           due_date_override: form.due_date_override ? Number(form.due_date_override) : null,
         }),
       });

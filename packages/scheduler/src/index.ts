@@ -3,6 +3,12 @@ import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
 import { Queue } from "bullmq";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+import pino from "pino";
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || "info",
+});
 
 const prisma = new PrismaClient({ log: ["error", "warn"] });
 
@@ -20,62 +26,101 @@ const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || "";
 const PAY_SECRET = process.env.PAY_SECRET || "pay-secret-change-me-min-32-chars";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
-async function acquireLock(lockKey: string): Promise<boolean> {
-  const result = await redis.set(lockKey, "locked", "EX", 600, "NX");
-  return result === "OK";
+const MAIL_HOST = process.env.SMTP_HOST || "";
+const MAIL_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const MAIL_USER = process.env.SMTP_USER || "";
+const MAIL_PASS = process.env.SMTP_PASS || "";
+const MAIL_FROM = process.env.SMTP_FROM || "noreply@kospintar.com";
+const ALERT_EMAIL = process.env.ALERT_EMAIL || "";
+
+const mailTransport = MAIL_HOST
+  ? nodemailer.createTransport({
+      host: MAIL_HOST,
+      port: MAIL_PORT,
+      secure: MAIL_PORT === 465,
+      auth: { user: MAIL_USER, pass: MAIL_PASS },
+    })
+  : null;
+
+async function sendAlert(subject: string, body: string) {
+  if (!mailTransport || !ALERT_EMAIL) {
+    logger.warn("SMTP not configured — alert not sent");
+    return;
+  }
+  try {
+    await mailTransport.sendMail({ from: MAIL_FROM, to: ALERT_EMAIL, subject, text: body });
+    logger.info({ to: ALERT_EMAIL, subject }, "Alert sent");
+  } catch (e) {
+    logger.error(e, "Failed to send alert");
+  }
 }
 
-async function releaseLock(lockKey: string) {
-  await redis.del(lockKey);
+async function acquireLock(jobName: string): Promise<boolean> {
+  const [result] = await prisma.$queryRaw<[{ pg_try_advisory_lock: boolean }]>`
+    SELECT pg_try_advisory_lock(hashtext(${jobName})) as pg_try_advisory_lock
+  `;
+  return result.pg_try_advisory_lock;
+}
+
+async function releaseLock(jobName: string) {
+  await prisma.$queryRaw`SELECT pg_advisory_unlock(hashtext(${jobName}))`;
 }
 
 function createPayToken(billId: string, phone: string): string {
   return jwt.sign({ bill_id: billId, tenant_phone: phone }, PAY_SECRET, { expiresIn: "7d" });
 }
 
-// ========== AUTO BILLING ==========
-// Cron: 25th of every month at 08:00 WIB (01:00 UTC)
+async function runWithRetryAndAlert(
+  jobName: string,
+  fn: () => Promise<void>,
+  retries = 3,
+  delayMs = 5 * 60 * 1000
+): Promise<void> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (error) {
+      logger.error({ jobName, attempt, retries }, `Cron job failed: ${error}`);
+      if (attempt < retries) {
+        logger.info({ jobName, delayMs }, `Retrying in ${delayMs / 1000}s`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } else {
+        await sendAlert(
+          `[Kospintar] Cron FAILED: ${jobName}`,
+          `Job: ${jobName}\nError: ${error}\nTime: ${new Date().toISOString()}`
+        );
+      }
+    }
+  }
+}
+
 async function autoBilling() {
-  const lockKey = "cron:auto_billing";
-  if (!(await acquireLock(lockKey))) {
-    console.log("[Scheduler] auto_billing already running, skipping");
+  if (!(await acquireLock("auto_billing"))) {
+    logger.info("auto_billing already running, skipping");
     return;
   }
-
   const log = await prisma.cron_logs.create({
     data: { job_name: "auto_billing", status: "running", started_at: new Date() },
   });
-
   try {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const periodLabel = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`;
-
     const activeTenants = await prisma.tenants.findMany({
-      where: {
-        status: "active",
-        contract_end: { gte: nextMonth },
-      },
+      where: { status: "active", contract_end: { gte: nextMonth } },
       include: { property: { select: { is_active: true } } },
     });
-
-    let created = 0;
-    let skipped = 0;
-    let failed = 0;
-
+    let created = 0, skipped = 0, failed = 0;
     for (const tenant of activeTenants) {
       if (!tenant.property.is_active) { skipped++; continue; }
-
       const existing = await prisma.bills.findFirst({
         where: { tenant_id: tenant.id, period_label: periodLabel },
       });
-
       if (existing) { skipped++; continue; }
-
       try {
         const dueDay = Math.min(tenant.due_date_override || 10, 28);
         const dueDate = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), dueDay);
-
         await prisma.bills.create({
           data: {
             tenant_id: tenant.id,
@@ -87,12 +132,8 @@ async function autoBilling() {
           },
         });
         created++;
-      } catch (error) {
-        console.error(`[Scheduler] Failed to create bill for tenant ${tenant.id}:`, error);
-        failed++;
-      }
+      } catch (e) { logger.error(e, "Failed billing for tenant"); failed++; }
     }
-
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: {
@@ -101,68 +142,47 @@ async function autoBilling() {
         summary: { total: activeTenants.length, created, skipped, failed },
       },
     });
-
-    console.log(`[Scheduler] auto_billing done: ${created} created, ${skipped} skipped, ${failed} failed`);
+    logger.info({ created, skipped, failed }, "auto_billing done");
   } catch (error) {
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: { status: "failed", finished_at: new Date(), error_message: String(error) },
     });
-    console.error("[Scheduler] auto_billing failed:", error);
+    throw error;
   } finally {
-    await releaseLock(lockKey);
+    await releaseLock("auto_billing");
   }
 }
 
-// ========== WA REMINDER ==========
-// Cron: daily at 08:00 WIB (01:00 UTC)
 async function waReminder() {
-  const lockKey = "cron:wa_reminder";
-  if (!(await acquireLock(lockKey))) {
-    console.log("[Scheduler] wa_reminder already running, skipping");
-    return;
-  }
-
+  if (!(await acquireLock("wa_reminder"))) { logger.info("wa_reminder already running, skipping"); return; }
   const log = await prisma.cron_logs.create({
     data: { job_name: "wa_reminder", status: "running", started_at: new Date() },
   });
-
   try {
     const now = new Date();
     const pendingBills = await prisma.bills.findMany({
       where: { status: "pending" },
-      include: {
-        tenant: true,
-        property: { include: { wa_instances: true } },
-      },
+      include: { tenant: true, property: { include: { wa_instances: true } } },
     });
-
-    let sent = 0;
-    let skipped = 0;
-    let failed = 0;
-
+    let sent = 0, skipped = 0, failed = 0;
     for (const bill of pendingBills) {
       if (!bill.tenant) { skipped++; continue; }
-
-      const dueDate = new Date(bill.due_date);
-      const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
+      const diffDays = Math.ceil(
+        (new Date(bill.due_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
       let reminderType: string | null = null;
       if (diffDays === 7) reminderType = "H-7";
       else if (diffDays === 3) reminderType = "H-3";
       else if (diffDays === 1) reminderType = "H-1";
       else if (diffDays === -1) reminderType = "H+1";
-
       if (!reminderType) { skipped++; continue; }
-
       const waInstance = bill.property.wa_instances[0];
       if (!waInstance || waInstance.connection_status !== "connected") { skipped++; continue; }
-
       const month = bill.period_label;
-      const amountRp = `Rp ${(bill.amount / 1_000_000).toLocaleString("id-ID")}`;
+      const amountRp = `Rp ${(bill.amount / 100).toLocaleString("id-ID")}`;
       const signedToken = createPayToken(bill.id, bill.tenant.phone);
       const payLink = `${APP_URL}/pay/${signedToken}`;
-
       let message = "";
       switch (reminderType) {
         case "H-7":
@@ -178,7 +198,6 @@ async function waReminder() {
           message = `Kak, tagihan sudah jatuh tempo. Segera bayar biar gak kendala: ${payLink}`;
           break;
       }
-
       try {
         const logEntry = await prisma.notification_logs.create({
           data: {
@@ -186,28 +205,18 @@ async function waReminder() {
             type: "reminder",
             recipient_phone: bill.tenant.phone,
             message_body: message,
-            status: "sent",
+            status: "queued",
             sent_at: new Date(),
           },
         });
-
-        await waQueue.add("send-message", {
-          to: bill.tenant.phone,
-          message,
-          instanceName: waInstance.instance_name,
-          notificationLogId: logEntry.id,
-        }, {
-          attempts: 3,
-          backoff: { type: "exponential", delay: 30000 },
-        });
-
+        await waQueue.add(
+          "send-message",
+          { to: bill.tenant.phone, message, instanceName: waInstance.instance_name, notificationLogId: logEntry.id },
+          { attempts: 3, backoff: { type: "fixed", delay: 30000 } }
+        );
         sent++;
-      } catch (error) {
-        console.error(`[Scheduler] Failed to queue reminder for bill ${bill.id}:`, error);
-        failed++;
-      }
+      } catch (e) { logger.error(e, "Failed queue reminder"); failed++; }
     }
-
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: {
@@ -216,50 +225,35 @@ async function waReminder() {
         summary: { total: pendingBills.length, sent, skipped, failed },
       },
     });
-
-    console.log(`[Scheduler] wa_reminder done: ${sent} sent, ${skipped} skipped, ${failed} failed`);
+    logger.info({ sent, skipped, failed }, "wa_reminder done");
   } catch (error) {
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: { status: "failed", finished_at: new Date(), error_message: String(error) },
     });
-    console.error("[Scheduler] wa_reminder failed:", error);
+    throw error;
   } finally {
-    await releaseLock(lockKey);
+    await releaseLock("wa_reminder");
   }
 }
 
-// ========== EXPIRE STALE PAYMENTS ==========
-// Cron: every 6 hours
 async function expireStalePayments() {
-  const lockKey = "cron:expire_stale_payments";
-  if (!(await acquireLock(lockKey))) return;
-
+  if (!(await acquireLock("expire_stale_payments"))) return;
   const log = await prisma.cron_logs.create({
     data: { job_name: "expire_stale_payments", status: "running", started_at: new Date() },
   });
-
   try {
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
     const staleBills = await prisma.bills.findMany({
-      where: {
-        status: "pending",
-        midtrans_order_id: { not: null },
-        created_at: { lt: twentyFourHoursAgo },
-      },
+      where: { status: "pending", midtrans_order_id: { not: null }, created_at: { lt: twentyFourHoursAgo } },
     });
-
-    let expired = 0;
-    let checked = 0;
-
+    let expired = 0, checked = 0;
     for (const bill of staleBills) {
       if (!bill.midtrans_order_id) continue;
       checked++;
-
       try {
-        const midtransRes = await fetch(
+        const res = await fetch(
           `${process.env.MIDTRANS_SNAP_URL || "https://app.sandbox.midtrans.com/api/v1"}/transactions/${bill.midtrans_order_id}/status`,
           {
             headers: {
@@ -267,150 +261,114 @@ async function expireStalePayments() {
             },
           }
         );
-
-        const data = await midtransRes.json() as any;
-
+        const data = await res.json() as any;
         if (data.transaction_status === "expire") {
-          await prisma.bills.update({
-            where: { id: bill.id },
-            data: { status: "expired" },
-          });
+          await prisma.bills.update({ where: { id: bill.id }, data: { status: "expired" } });
           expired++;
-        } else if (data.transaction_status === "settlement" || data.transaction_status === "capture") {
-          await prisma.bills.update({
-            where: { id: bill.id },
-            data: { status: "paid", paid_at: new Date() },
-          });
+        } else if (["settlement", "capture"].includes(data.transaction_status)) {
+          await prisma.bills.update({ where: { id: bill.id }, data: { status: "paid", paid_at: new Date() } });
         }
-      } catch (error) {
-        console.error(`[Scheduler] Failed to check bill ${bill.id}:`, error);
-      }
+      } catch (e) { logger.error(e, "Failed checking bill status"); }
     }
-
     await prisma.cron_logs.update({
       where: { id: log.id },
-      data: {
-        status: "completed",
-        finished_at: new Date(),
-        summary: { checked, expired },
-      },
+      data: { status: "completed", finished_at: new Date(), summary: { checked, expired } },
     });
-
-    console.log(`[Scheduler] expire_stale_payments done: ${checked} checked, ${expired} expired`);
+    logger.info({ checked, expired }, "expire_stale_payments done");
   } catch (error) {
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: { status: "failed", finished_at: new Date(), error_message: String(error) },
     });
-    console.error("[Scheduler] expire_stale_payments failed:", error);
+    throw error;
   } finally {
-    await releaseLock(lockKey);
+    await releaseLock("expire_stale_payments");
   }
 }
 
-// ========== AUTO-CLOSE TICKETS ==========
-// Cron: daily at 02:00 WIB (19:00 UTC prev day)
 async function autoCloseTickets() {
-  const lockKey = "cron:auto_close_tickets";
-  if (!(await acquireLock(lockKey))) return;
-
+  if (!(await acquireLock("auto_close_tickets"))) return;
   const log = await prisma.cron_logs.create({
     data: { job_name: "auto_close_tickets", status: "running", started_at: new Date() },
   });
-
   try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const result = await prisma.tickets.updateMany({
-      where: {
-        status: "resolved",
-        updated_at: { lt: sevenDaysAgo },
-      },
-      data: {
-        status: "closed",
-        closed_at: new Date(),
-      },
+      where: { status: "resolved", updated_at: { lt: sevenDaysAgo } },
+      data: { status: "closed", closed_at: new Date() },
     });
-
     await prisma.cron_logs.update({
       where: { id: log.id },
-      data: {
-        status: "completed",
-        finished_at: new Date(),
-        summary: { auto_closed: result.count },
-      },
+      data: { status: "completed", finished_at: new Date(), summary: { auto_closed: result.count } },
     });
-
-    console.log(`[Scheduler] auto_close_tickets done: ${result.count} tickets auto-closed`);
+    logger.info({ count: result.count }, "auto_close_tickets done");
   } catch (error) {
     await prisma.cron_logs.update({
       where: { id: log.id },
       data: { status: "failed", finished_at: new Date(), error_message: String(error) },
     });
-    console.error("[Scheduler] auto_close_tickets failed:", error);
+    throw error;
   } finally {
-    await releaseLock(lockKey);
+    await releaseLock("auto_close_tickets");
   }
 }
 
-// ========== WA HEALTH CHECK ==========
-// Cron: every 5 minutes
 async function waHealthCheck() {
-  const lockKey = "cron:wa_health_check";
-  if (!(await acquireLock(lockKey))) return;
-
+  if (!(await acquireLock("wa_health_check"))) return;
+  const log = await prisma.cron_logs.create({
+    data: { job_name: "wa_health_check", status: "running", started_at: new Date() },
+  });
   try {
-    const instances = await prisma.wa_instances.findMany({
-      where: { connection_status: "connected" },
-    });
-
+    const instances = await prisma.wa_instances.findMany();
     for (const instance of instances) {
       try {
-        const res = await fetch(`${EVOLUTION_URL}/instance/connectionState/${instance.instance_name}`, {
-          headers: { apikey: EVOLUTION_KEY },
-        });
-
+        const res = await fetch(
+          `${EVOLUTION_URL}/instance/connectionState/${instance.instance_name}`,
+          { headers: { apikey: EVOLUTION_KEY } }
+        );
         const data = await res.json() as any;
-        const newStatus = data.state === "open" ? "connected" : "disconnected";
-
+        const newStatus: any = data.state === "open" ? "connected" : "disconnected";
         if (newStatus !== instance.connection_status) {
           await prisma.wa_instances.update({
             where: { id: instance.id },
             data: {
-              connection_status: newStatus as any,
+              connection_status: newStatus,
               last_connected_at: newStatus === "connected" ? new Date() : instance.last_connected_at,
             },
           });
-          console.log(`[Scheduler] WA ${instance.instance_name} status changed: ${instance.connection_status} → ${newStatus}`);
+          logger.info({ instance: instance.instance_name, from: instance.connection_status, to: newStatus }, "WA status changed");
         }
-      } catch (error) {
-        console.error(`[Scheduler] WA health check failed for ${instance.instance_name}:`, error);
-      }
+      } catch (e) { logger.error(e, "WA health check failed"); }
     }
+    await prisma.cron_logs.update({
+      where: { id: log.id },
+      data: { status: "completed", finished_at: new Date(), summary: { checked: instances.length } },
+    });
   } catch (error) {
-    console.error("[Scheduler] wa_health_check failed:", error);
+    await prisma.cron_logs.update({
+      where: { id: log.id },
+      data: { status: "failed", finished_at: new Date(), error_message: String(error) },
+    });
   } finally {
-    await releaseLock(lockKey);
+    await releaseLock("wa_health_check");
   }
 }
 
-// ========== REGISTER CRON JOBS ==========
-cron.schedule("0 1 25 * *", autoBilling);       // 25th at 08:00 WIB
-cron.schedule("0 1 * * *", waReminder);          // daily at 08:00 WIB
-cron.schedule("0 */6 * * *", expireStalePayments); // every 6 hours
-cron.schedule("0 19 * * *", autoCloseTickets);   // daily at 02:00 WIB
-cron.schedule("*/5 * * * *", waHealthCheck);     // every 5 minutes
+cron.schedule("0 1 25 * *", () => runWithRetryAndAlert("auto_billing", autoBilling));
+cron.schedule("0 1 * * *", () => runWithRetryAndAlert("wa_reminder", waReminder));
+cron.schedule("0 */6 * * *", () => runWithRetryAndAlert("expire_stale_payments", expireStalePayments));
+cron.schedule("0 19 * * *", () => runWithRetryAndAlert("auto_close_tickets", autoCloseTickets));
+cron.schedule("*/5 * * * *", () => runWithRetryAndAlert("wa_health_check", waHealthCheck));
 
-console.log("[Scheduler] Started. Cron jobs registered:");
-console.log("  - auto_billing: 25th of every month at 08:00 WIB");
-console.log("  - wa_reminder: daily at 08:00 WIB");
-console.log("  - expire_stale_payments: every 6 hours");
-console.log("  - auto_close_tickets: daily at 02:00 WIB");
-console.log("  - wa_health_check: every 5 minutes");
+logger.info("Scheduler started with 5 cron jobs");
+logger.info("  auto_billing: 25th 08:00 WIB (retry 3x, alert on failure)");
+logger.info("  wa_reminder: daily 08:00 WIB (retry 3x, alert on failure)");
+logger.info("  expire_stale_payments: every 6h (retry 3x, alert on failure)");
+logger.info("  auto_close_tickets: daily 02:00 WIB (retry 3x, alert on failure)");
+logger.info("  wa_health_check: every 5min (retry 3x, alert on failure)");
 
 async function shutdown() {
-  console.log("[Scheduler] Shutting down...");
+  logger.info("Shutting down scheduler");
   cron.destroy();
   await prisma.$disconnect();
   await redis.quit();

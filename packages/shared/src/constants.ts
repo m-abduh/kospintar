@@ -7,7 +7,7 @@ export const FREE_TIER = {
   MAX_WA_MESSAGES_PER_MONTH: 500,
 } as const;
 
-export const MONEY_SCALE = 1_000_000 as const;
+export const MONEY_SCALE = 100 as const;
 
 export function senToRupiah(sen: number): string {
   const rp = sen / MONEY_SCALE;

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import crypto from "crypto";
 import { prisma } from "../config/database.js";
 import { config } from "../config/index.js";
@@ -38,7 +39,7 @@ router.get("/", verifyJWT, requireOwner, async (req, res) => {
 
     res.json({ data: bills, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List bills error:", error);
+    logger.error("List bills error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -64,7 +65,7 @@ router.get("/:id", verifyJWT, requireOwner, async (req, res) => {
 
     res.json({ bill });
   } catch (error) {
-    console.error("Get bill error:", error);
+    logger.error("Get bill error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -104,7 +105,7 @@ router.post("/", verifyJWT, requireOwner, validate(billSchema), async (req, res)
 
     res.status(201).json({ bill });
   } catch (error) {
-    console.error("Create bill error:", error);
+    logger.error("Create bill error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -135,7 +136,7 @@ router.put("/:id/void", verifyJWT, requireOwner, validate(billVoidSchema), async
 
     res.json({ bill: updated });
   } catch (error) {
-    console.error("Void bill error:", error);
+    logger.error("Void bill error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -203,7 +204,7 @@ router.post("/webhook/midtrans", async (req, res) => {
 
     res.status(200).json({ status: "ok" });
   } catch (error) {
-    console.error("Midtrans webhook error:", error);
+    logger.error("Midtrans webhook error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

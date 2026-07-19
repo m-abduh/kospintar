@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { prisma } from "../config/database.js";
@@ -67,7 +68,7 @@ router.post("/:signed_token", async (req, res) => {
 
     res.json({ redirect_url: midtransData.redirect_url, token: midtransData.token });
   } catch (error) {
-    console.error("Pay error:", error);
+    logger.error("Pay error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -96,7 +97,7 @@ router.get("/:signed_token/status", async (req, res) => {
 
     res.json({ bill });
   } catch (error) {
-    console.error("Pay status error:", error);
+    logger.error("Pay status error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

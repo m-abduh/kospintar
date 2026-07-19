@@ -73,6 +73,7 @@ enum NotificationType {
 }
 
 enum NotificationStatus {
+  queued
   sent
   delivered
   failed
@@ -242,9 +243,10 @@ model chat_messages {
   status         ChatMessageStatus @default(sent)
   created_at     DateTime          @default(now()) @map("created_at") @db.Timestamptz()
 
-  ticket tickets? @relation(fields: [ticket_id], references: [id])
-  tenant tenants  @relation(fields: [tenant_id], references: [id])
-  property properties @relation(fields: [property_id], references: [id])
+  ticket       tickets?       @relation(fields: [ticket_id], references: [id])
+  tenant       tenants        @relation(fields: [tenant_id], references: [id])
+  property     properties     @relation(fields: [property_id], references: [id])
+  notification_logs notification_logs[]
 
   @@index([tenant_id, created_at])
   @@map("chat_messages")
@@ -294,6 +296,7 @@ model notification_logs {
 
   bill         bills?         @relation(fields: [bill_id], references: [id])
   ticket       tickets?       @relation(fields: [ticket_id], references: [id])
+  chat_message chat_messages? @relation(fields: [chat_message_id], references: [id])
 
   @@map("notification_logs")
 }

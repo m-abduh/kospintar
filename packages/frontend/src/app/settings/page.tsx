@@ -8,10 +8,32 @@ import { toast } from "sonner";
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [edit, setEdit] = useState({ name: "", phone: "" });
 
   useEffect(() => {
-    apiFetch("/api/auth/me").then((d) => setUser(d.user)).catch(() => {}).finally(() => setLoading(false));
+    apiFetch("/api/auth/me").then((d) => {
+      setUser(d.user);
+      setEdit({ name: d.user.name, phone: d.user.phone || "" });
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const d = await apiFetch("/api/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify(edit),
+      });
+      setUser(d.user);
+      setEdit({ name: d.user.name, phone: d.user.phone || "" });
+      toast.success("Profil berhasil disimpan");
+    } catch (e: any) {
+      toast.error(e.message || "Gagal menyimpan profil");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -23,16 +45,24 @@ export default function SettingsPage() {
         ) : user ? (
           <div className="card space-y-4">
             <div>
-              <p className="text-sm text-gray-500">Nama</p>
-              <p className="font-medium">{user.name}</p>
+              <label className="block text-sm text-gray-500 mb-1">Nama</label>
+              <input
+                className="input w-full"
+                value={edit.name}
+                onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+              />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Email</p>
+              <label className="block text-sm text-gray-500 mb-1">Email</label>
               <p className="font-medium">{user.email}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Telepon</p>
-              <p className="font-medium">{user.phone}</p>
+              <label className="block text-sm text-gray-500 mb-1">Telepon</label>
+              <input
+                className="input w-full"
+                value={edit.phone}
+                onChange={(e) => setEdit({ ...edit, phone: e.target.value })}
+              />
             </div>
             <div>
               <p className="text-sm text-gray-500">Role</p>
@@ -47,6 +77,13 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-500 mb-2">Tier: <span className="font-medium text-primary-600">Free</span></p>
               <p className="text-xs text-gray-400">Max 3 properti, 50 penghuni/properti, 500 pesan WA/bulan</p>
             </div>
+            <button
+              className="btn btn-primary w-full"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
           </div>
         ) : (
           <div className="card text-center py-8"><p className="text-gray-500">Gagal memuat profil</p></div>

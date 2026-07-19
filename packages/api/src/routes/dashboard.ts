@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/database.js";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
 
@@ -61,7 +62,7 @@ router.get("/summary", async (req, res) => {
 
     res.json({ summaries });
   } catch (error) {
-    console.error("Dashboard summary error:", error);
+    logger.error("Dashboard summary error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -95,7 +96,7 @@ router.get("/revenue", async (req, res) => {
 
     res.json({ data });
   } catch (error) {
-    console.error("Revenue error:", error);
+    logger.error("Revenue error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

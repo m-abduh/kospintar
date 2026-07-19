@@ -1,6 +1,9 @@
-import { Worker, Queue, QueueEvents } from "bullmq";
+import { Worker, Queue } from "bullmq";
 import { PrismaClient } from "@prisma/client";
 import Redis from "ioredis";
+import pino from "pino";
+
+const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 
 const prisma = new PrismaClient({ log: ["error", "warn"] });
 
@@ -53,7 +56,7 @@ const waWorker = new Worker(
   "wa-send",
   async (job) => {
     const data = job.data as WaSendJob;
-    console.log(`[Worker] Sending WA to ${data.to} (attempt ${job.attemptsMade + 1})`);
+    logger.info({ to: data.to, attempt: job.attemptsMade + 1 }, "Sending WA");
 
     try {
       await sendWaMessage(data);
@@ -62,12 +65,12 @@ const waWorker = new Worker(
         await prisma.notification_logs.update({
           where: { id: data.notificationLogId },
           data: { status: "sent", sent_at: new Date() },
-        }).catch((e) => console.error("[Worker] Failed to update notification log:", e));
+        }).catch((e) => logger.error(e, "Failed to update notification log"));
       }
 
-      console.log(`[Worker] WA sent to ${data.to}`);
+      logger.info({ to: data.to }, "WA sent");
     } catch (error) {
-      console.error(`[Worker] WA send failed to ${data.to} (attempt ${job.attemptsMade + 1}):`, error);
+      logger.error({ to: data.to, attempt: job.attemptsMade + 1, error }, "WA send failed");
       throw error;
     }
   },
@@ -82,28 +85,28 @@ const waWorker = new Worker(
 );
 
 waWorker.on("completed", (job) => {
-  console.log(`[Worker] Job ${job.id} completed for ${job.data.to}`);
+  logger.info({ jobId: job.id, to: job.data.to }, "Job completed");
 });
 
 waWorker.on("failed", async (job, err) => {
-  console.error(`[Worker] Job ${job?.id} failed after ${job?.attemptsMade} attempts:`, err.message);
+  logger.error({ jobId: job?.id, attempts: job?.attemptsMade, error: err.message }, "Job failed");
 
   if (job && job.attemptsMade >= (job.opts.attempts || 3)) {
-    console.error(`[Worker] Job ${job.id} moved to DLQ`);
+    logger.info({ jobId: job.id }, "Moving to DLQ");
     await deadLetterQueue.add("failed-wa", {
       ...job.data,
       error: err.message,
       failed_at: new Date().toISOString(),
-    }).catch((e) => console.error("[Worker] Failed to add to DLQ:", e));
+    }).catch((e) => logger.error(e, "Failed to add to DLQ"));
   }
 });
 
 waWorker.on("ready", () => {
-  console.log("[Worker] WA send worker ready (concurrency: 5, rate: 50/min, retry: 3x with 30s delay)");
+  logger.info("WA send worker ready (concurrency: 5, rate: 50/min, retry: 3x with 30s delay)");
 });
 
 async function shutdown() {
-  console.log("[Worker] Shutting down...");
+  logger.info("Shutting down worker");
   await waWorker.close();
   await waQueue.close();
   await deadLetterQueue.close();

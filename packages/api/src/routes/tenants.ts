@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/database.js";
 import { tenantSchema } from "@kospintar/shared";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
@@ -36,7 +37,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: tenants, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List tenants error:", error);
+    logger.error("List tenants error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -61,7 +62,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ tenant });
   } catch (error) {
-    console.error("Get tenant error:", error);
+    logger.error("Get tenant error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -107,7 +108,7 @@ router.post("/", checkFreeTierTenant, validate(tenantSchema), async (req, res) =
 
     res.status(201).json({ tenant });
   } catch (error) {
-    console.error("Create tenant error:", error);
+    logger.error("Create tenant error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -159,7 +160,7 @@ router.put("/:id", validate(tenantSchema), async (req, res) => {
 
     res.json({ tenant });
   } catch (error) {
-    console.error("Update tenant error:", error);
+    logger.error("Update tenant error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -206,7 +207,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ tenant: updated });
   } catch (error) {
-    console.error("Delete tenant error:", error);
+    logger.error("Delete tenant error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

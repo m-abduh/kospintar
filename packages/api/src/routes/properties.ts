@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/database.js";
 import { propertySchema } from "@kospintar/shared";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
@@ -26,7 +27,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: properties, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List properties error:", error);
+    logger.error("List properties error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -58,7 +59,7 @@ router.get("/:id", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get property error:", error);
+    logger.error("Get property error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -77,7 +78,7 @@ router.post("/", checkFreeTierProperty, validate(propertySchema), async (req, re
 
     res.status(201).json({ property });
   } catch (error) {
-    console.error("Create property error:", error);
+    logger.error("Create property error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -105,7 +106,7 @@ router.put("/:id", validate(propertySchema), async (req, res) => {
 
     res.json({ property });
   } catch (error) {
-    console.error("Update property error:", error);
+    logger.error("Update property error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -146,7 +147,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ message: "Property deleted" });
   } catch (error) {
-    console.error("Delete property error:", error);
+    logger.error("Delete property error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

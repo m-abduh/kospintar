@@ -31,8 +31,8 @@ export default function NewTenantPage() {
         method: "POST",
         body: JSON.stringify({
           ...form,
-          rent_amount: Number(form.rent_amount) * 1_000_000,
-          deposit: Number(form.deposit || 0) * 1_000_000,
+          rent_amount: Number(form.rent_amount) * 100,
+          deposit: Number(form.deposit || 0) * 100,
         }),
       });
       toast.success("Penghuni berhasil ditambahkan!");

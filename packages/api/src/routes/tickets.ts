@@ -1,12 +1,22 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/database.js";
 import { ticketUpdateSchema, ticketReplySchema } from "@kospintar/shared";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { z } from "zod";
 
 const router = Router();
 
 router.use(verifyJWT, requireOwner);
+
+const createTicketSchema = z.object({
+  property_id: z.string().uuid(),
+  tenant_id: z.string().uuid().optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+});
 
 router.get("/", async (req, res) => {
   try {
@@ -38,7 +48,7 @@ router.get("/", async (req, res) => {
 
     res.json({ data: tickets, total, page: parseInt(String(page), 10), limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("List tickets error:", error);
+    logger.error("List tickets error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -64,12 +74,12 @@ router.get("/:id", async (req, res) => {
 
     res.json({ ticket });
   } catch (error) {
-    console.error("Get ticket error:", error);
+    logger.error("Get ticket error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", validate(createTicketSchema), async (req, res) => {
   try {
     const { property_id, tenant_id, title, description, priority } = req.body;
 
@@ -99,7 +109,7 @@ router.post("/", async (req, res) => {
 
     res.status(201).json({ ticket });
   } catch (error) {
-    console.error("Create ticket error:", error);
+    logger.error("Create ticket error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -131,7 +141,7 @@ router.put("/:id", validate(ticketUpdateSchema), async (req, res) => {
 
     res.json({ ticket });
   } catch (error) {
-    console.error("Update ticket error:", error);
+    logger.error("Update ticket error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -172,7 +182,7 @@ router.post("/:id/reply", validate(ticketReplySchema), async (req, res) => {
 
     res.json({ chat_message: chatMessage });
   } catch (error) {
-    console.error("Reply ticket error:", error);
+    logger.error("Reply ticket error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

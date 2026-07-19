@@ -13,7 +13,7 @@ import billRoutes from "./routes/bills.js";
 import ticketRoutes from "./routes/tickets.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import chatRoutes from "./routes/chat.js";
-import waRoutes from "./routes/wa.js";
+import waRoutes, { waWebhookRouter } from "./routes/wa.js";
 import payRoutes from "./routes/pay.js";
 import uploadRoutes from "./routes/upload.js";
 import healthRoutes, { readyRouter } from "./routes/health.js";
@@ -76,7 +76,7 @@ app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 
 app.use("/api/bills/webhook/midtrans", webhookMidtransLimiter);
-app.use("/api/wa/webhook", webhookEvolutionLimiter);
+app.use("/api/wa/webhook", webhookEvolutionLimiter, waWebhookRouter);
 
 app.use("/api/properties", propertyRoutes);
 app.use("/api/tenants", tenantRoutes);

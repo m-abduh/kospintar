@@ -30,7 +30,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 export function formatRupiah(sen: number): string {
-  const rp = sen / 1_000_000;
+  const rp = sen / 100;
   return `Rp ${rp.toLocaleString("id-ID")}`;
 }
 

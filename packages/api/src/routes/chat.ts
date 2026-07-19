@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../config/logger.js";
 import { prisma } from "../config/database.js";
 import { chatSendSchema } from "@kospintar/shared";
 import { verifyJWT, requireOwner } from "../middleware/auth.js";
@@ -29,7 +30,7 @@ router.get("/:tenantId", async (req, res) => {
 
     res.json({ messages });
   } catch (error) {
-    console.error("Chat history error:", error);
+    logger.error("Chat history error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -63,7 +64,7 @@ router.post("/send", validate(chatSendSchema), async (req, res) => {
 
     res.json({ message });
   } catch (error) {
-    console.error("Chat send error:", error);
+    logger.error("Chat send error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -47,12 +47,12 @@ async function main() {
   });
 
   const tenants = [
-    { name: "Siti Rahayu", phone: "6281211111111", room_number: "A01", rent_amount: 1_500_000 },
-    { name: "Ahmad Fauzi", phone: "6281222222222", room_number: "A02", rent_amount: 1_500_000 },
-    { name: "Dewi Lestari", phone: "6281233333333", room_number: "B01", rent_amount: 2_000_000 },
-    { name: "Rudi Hartono", phone: "6281244444444", room_number: "C01", rent_amount: 1_200_000 },
-    { name: "Maya Indah", phone: "6281255555555", room_number: "A03", rent_amount: 1_500_000 },
-    { name: "Bagus Putra", phone: "6281266666666", room_number: "A01", rent_amount: 1_200_000 },
+    { name: "Siti Rahayu", phone: "6281211111111", room_number: "A01", rent_amount: 1_500_000_00 },
+    { name: "Ahmad Fauzi", phone: "6281222222222", room_number: "A02", rent_amount: 1_500_000_00 },
+    { name: "Dewi Lestari", phone: "6281233333333", room_number: "B01", rent_amount: 2_000_000_00 },
+    { name: "Rudi Hartono", phone: "6281244444444", room_number: "C01", rent_amount: 1_200_000_00 },
+    { name: "Maya Indah", phone: "6281255555555", room_number: "A03", rent_amount: 1_500_000_00 },
+    { name: "Bagus Putra", phone: "6281266666666", room_number: "A01", rent_amount: 1_200_000_00 },
   ];
 
   for (const t of tenants) {

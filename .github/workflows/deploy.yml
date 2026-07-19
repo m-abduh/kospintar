@@ -18,6 +18,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install
+      - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
@@ -52,6 +53,7 @@ jobs:
           script: |
             cd /opt/kospintar
             docker compose pull
+            docker compose run --rm api npx prisma migrate deploy
             docker compose up -d --build
             sleep 10
-            curl -f http://localhost:3000/api/health || echo "Health check failed"
+            curl -f http://localhost/api/health || echo "Health check failed"
